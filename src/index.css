@@ -1,0 +1,184 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --font-display: "Reem Kufi", "IBM Plex Sans Arabic", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+:root {
+  --background: oklch(0.155 0.032 232);
+  --foreground: oklch(0.955 0.014 85);
+  --surface: oklch(0.195 0.036 228);
+  --surface-raised: oklch(0.24 0.04 224);
+  --card: oklch(0.2 0.036 228);
+  --card-foreground: oklch(0.955 0.014 85);
+  --primary: oklch(0.81 0.135 78);
+  --primary-foreground: oklch(0.18 0.035 60);
+  --secondary: oklch(0.265 0.042 220);
+  --secondary-foreground: oklch(0.92 0.018 190);
+  --muted: oklch(0.235 0.035 225);
+  --muted-foreground: oklch(0.73 0.025 215);
+  --accent: oklch(0.295 0.05 210);
+  --accent-foreground: oklch(0.96 0.015 85);
+  --destructive: oklch(0.62 0.21 25);
+  --destructive-foreground: oklch(0.98 0.01 25);
+  --success: oklch(0.73 0.16 155);
+  --warning: oklch(0.79 0.15 70);
+  --border: oklch(0.31 0.036 222);
+  --input: oklch(0.27 0.038 224);
+  --ring: oklch(0.81 0.135 78);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    font-family: var(--font-sans);
+    color-scheme: dark;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-mono-tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.bg-gradient-gold {
+  background-image: linear-gradient(135deg, oklch(0.84 0.135 80), oklch(0.72 0.14 68));
+}
+
+.bg-gradient-night {
+  background-image: linear-gradient(
+    to bottom,
+    oklch(0.155 0.032 232 / 0.45) 0%,
+    oklch(0.155 0.032 232 / 0.88) 70%,
+    oklch(0.155 0.032 232) 100%
+  );
+}
+
+.bg-gradient-panel {
+  background-image: linear-gradient(160deg, oklch(0.22 0.04 226), oklch(0.185 0.034 232));
+}
+
+@keyframes speak-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 65%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 10px color-mix(in oklab, var(--primary) 0%, transparent);
+  }
+}
+
+.animate-speak {
+  animation: speak-ring 1s ease-out infinite;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Telegram-inspired Name Patterns */
+.name-style-pill-tint {
+  padding: 0.08rem 0.45rem;
+  border-radius: 0.45rem;
+  background-color: color-mix(in srgb, var(--name-color, #eab308) 16%, transparent);
+}
+
+.name-style-pill-border {
+  padding: 0.08rem 0.45rem;
+  border-radius: 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--name-color, #eab308) 55%, transparent);
+  background-color: color-mix(in srgb, var(--name-color, #eab308) 10%, transparent);
+}
+
+.name-style-dual-stripe {
+  padding: 0.08rem 0.5rem;
+  border-radius: 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--name-color, #eab308) 45%, transparent);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--name-color, #eab308) 22%, transparent),
+    color-mix(in srgb, var(--name-color, #eab308) 22%, transparent) 6px,
+    color-mix(in srgb, var(--name-color, #eab308) 8%, transparent) 6px,
+    color-mix(in srgb, var(--name-color, #eab308) 8%, transparent) 12px
+  );
+}
+
+.name-style-gradient-gold {
+  background-image: linear-gradient(90deg, #fde68a, #f59e0b, #fb7185);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+}
+
+.name-style-gradient-sunset {
+  background-image: linear-gradient(90deg, #fb923c, #f43f5e, #e879f9);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+}
+
+.name-style-gradient-ocean {
+  background-image: linear-gradient(90deg, #38bdf8, #2dd4bf, #818cf8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+}
+
+.name-style-gradient-berry {
+  background-image: linear-gradient(90deg, #f472b6, #c084fc, #38bdf8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+}
+
+.name-style-gradient-emerald {
+  background-image: linear-gradient(90deg, #a3e635, #10b981, #2dd4bf);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+}
+
+.name-style-glow-soft {
+  text-shadow: 0 0 10px color-mix(in srgb, var(--name-color, #eab308) 65%, transparent);
+}
+

@@ -1,0 +1,10 @@
+{
+  "name": "شات الخليج — مجلس المايكات",
+  "description": "منصة دردشة صوتية وكتابية عربية",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
