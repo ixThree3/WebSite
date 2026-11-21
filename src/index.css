@@ -100,10 +100,10 @@
 
 @keyframes speak-ring {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 65%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--success) 70%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 10px color-mix(in oklab, var(--primary) 0%, transparent);
+    box-shadow: 0 0 0 11px color-mix(in oklab, var(--success) 0%, transparent);
   }
 }
 

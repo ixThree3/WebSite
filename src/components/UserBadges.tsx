@@ -133,10 +133,12 @@ const NAME_STYLE_CLASS_MAP: Record<string, string> = {
 export function UserAvatar({
   user,
   size = 'md',
+  fit = 'cover-top',
   className = '',
 }: {
   user: { username: string; color: string; avatarUrl: string | null };
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  fit?: 'cover' | 'cover-top' | 'contain';
   className?: string;
 }) {
   const dims = {
@@ -145,14 +147,22 @@ export function UserAvatar({
     md: 'size-10 text-sm',
     lg: 'size-14 text-lg',
     xl: 'size-16 text-xl',
+    full: 'size-full',
   }[size];
+
+  const fitClass =
+    fit === 'contain'
+      ? 'object-contain bg-surface-raised'
+      : fit === 'cover'
+      ? 'object-cover object-center'
+      : 'object-cover object-top';
 
   if (user.avatarUrl) {
     return (
       <img
         src={user.avatarUrl}
         alt={user.username}
-        className={`${dims} shrink-0 rounded-full object-cover border border-border ${className}`}
+        className={`${dims} shrink-0 rounded-full ${fitClass} border border-border ${className}`}
       />
     );
   }

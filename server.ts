@@ -285,6 +285,39 @@ app.use(express.json({ limit: '6mb' }));
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 const wsClients = new Map<WebSocket, { userId: string | null; roomId: string | null }>();
+const speakingByRoom = new Map<string, Set<string>>();
+
+function setUserSpeaking(roomId: string, userId: string, speaking: boolean) {
+  if (!roomId || !userId) return;
+  let set = speakingByRoom.get(roomId);
+  if (speaking) {
+    if (!set) {
+      set = new Set();
+      speakingByRoom.set(roomId, set);
+    }
+    if (set.has(userId)) return;
+    set.add(userId);
+  } else {
+    if (!set || !set.has(userId)) return;
+    set.delete(userId);
+    if (set.size === 0) speakingByRoom.delete(roomId);
+  }
+  broadcastRoom(roomId, 'mic:speaking', { roomId, userId, speaking });
+}
+
+function clearUserSpeakingAllRooms(userId: string) {
+  for (const [roomId, set] of Array.from(speakingByRoom.entries())) {
+    if (set.has(userId)) {
+      setUserSpeaking(roomId, userId, false);
+    }
+  }
+}
+
+function sendSpeakingSync(ws: WebSocket, roomId: string | null) {
+  if (!roomId || ws.readyState !== WebSocket.OPEN) return;
+  const userIds = Array.from(speakingByRoom.get(roomId) ?? []);
+  ws.send(JSON.stringify({ event: 'mic:speaking_sync', payload: { roomId, userIds } }));
+}
 
 function broadcastAll(event: string, payload: unknown) {
   const raw = JSON.stringify({ event, payload });
@@ -411,6 +444,7 @@ wss.on('connection', (ws, req) => {
 
   wsClients.set(ws, { userId, roomId: user?.roomId ?? null });
   emitLivePresenceAndRooms();
+  sendSpeakingSync(ws, user?.roomId ?? null);
 
   ws.on('message', (raw) => {
     try {
@@ -419,6 +453,7 @@ wss.on('connection', (ws, req) => {
         roomId?: string;
         targetUserId?: string;
         signal?: unknown;
+        speaking?: boolean;
         token?: string;
       };
       const meta = wsClients.get(ws);
@@ -433,6 +468,7 @@ wss.on('connection', (ws, req) => {
           u.lastSeen = Date.now();
           meta.roomId = u.roomId;
           emitLivePresenceAndRooms();
+          sendSpeakingSync(ws, u.roomId);
         }
       } else if (msg.event === 'activity' && meta.userId) {
         const u = state.users.find((x) => x.id === meta.userId);
@@ -452,6 +488,21 @@ wss.on('connection', (ws, req) => {
           }
           emitLivePresenceAndRooms();
         }
+        sendSpeakingSync(ws, msg.roomId);
+      } else if (msg.event === 'mic:speaking' && meta.userId && msg.roomId) {
+        const room = state.rooms.find((r) => r.id === msg.roomId);
+        const u = state.users.find((x) => x.id === meta.userId);
+        const seat = room?.seats.find((s) => s.userId === meta.userId);
+        const canSpeak = Boolean(
+          room &&
+            room.micEnabled &&
+            u &&
+            seat &&
+            !seat.muted &&
+            !seat.forceMuted &&
+            !u.micForceMuted
+        );
+        setUserSpeaking(msg.roomId, meta.userId, canSpeak && Boolean(msg.speaking));
       } else if (msg.event === 'webrtc:signal' && msg.targetUserId && meta.userId) {
         const packet = JSON.stringify({
           event: 'webrtc:signal',
@@ -476,6 +527,10 @@ wss.on('connection', (ws, req) => {
     const meta = wsClients.get(ws);
     wsClients.delete(ws);
     if (meta?.userId) {
+      const stillConnected = Array.from(wsClients.values()).some((m) => m.userId === meta.userId);
+      if (!stillConnected) {
+        clearUserSpeakingAllRooms(meta.userId);
+      }
       // Preserve online session during mobile screen lock / brief backgrounding;
       // refresh lastSeen so the 20-minute idle sweep starts from disconnect.
       const u = state.users.find((x) => x.id === meta.userId);
@@ -507,6 +562,7 @@ setInterval(() => {
       })
     ) {
       u.online = false;
+      clearUserSpeakingAllRooms(u.id);
       for (const room of state.rooms) {
         for (const seat of room.seats) {
           if (seat.userId === u.id) {
@@ -1023,6 +1079,7 @@ app.post('/api/auth/logout', requireAuth, (req: AuthedRequest, res) => {
   const user = req.user!;
   user.online = false;
   user.lastSeen = Date.now();
+  clearUserSpeakingAllRooms(user.id);
   for (const room of state.rooms) {
     for (const seat of room.seats) {
       if (seat.userId === user.id) {
@@ -1228,6 +1285,7 @@ app.post('/api/rooms/:id/join', requireAuth, (req: AuthedRequest, res) => {
 
   // Leave any mic in previous room (never clears persistent user.micForceMuted)
   if (previousRoomId && switchedRoom) {
+    setUserSpeaking(previousRoomId, user.id, false);
     const prev = state.rooms.find((r) => r.id === previousRoomId);
     if (prev) {
       applyMicLeaveFromRoom(prev, user.id);
@@ -1433,6 +1491,7 @@ app.post('/api/rooms/:id/mic', requireAuth, (req: AuthedRequest, res) => {
     applyMicJoinToSeat(room, user, seatNum, Date.now());
   } else if (action === 'leave') {
     applyMicLeaveFromRoom(room, user.id, seatNum || undefined);
+    setUserSpeaking(room.id, user.id, false);
   } else if (action === 'toggle_mute' && seat && seat.userId === user.id) {
     const check = canSelfToggleMicMute(seat, user, rank);
     if (!check.allowed) {
@@ -1440,6 +1499,9 @@ app.post('/api/rooms/:id/mic', requireAuth, (req: AuthedRequest, res) => {
       return;
     }
     seat.muted = !seat.muted;
+    if (seat.muted) {
+      setUserSpeaking(room.id, user.id, false);
+    }
   } else if (action === 'admin_kick' && seat && seat.userId) {
     if (!hasPermission(rank, 'moderate_mics') && !room.operators.includes(user.id)) {
       res.status(403).json({ error: 'لا تملك صلاحية إنزال من المايك' });
@@ -1460,6 +1522,7 @@ app.post('/api/rooms/:id/mic', requireAuth, (req: AuthedRequest, res) => {
       return;
     }
     addStateLog('إنزال من المايك', user.username, target?.username ?? 'عضو', room.name, getClientIp(req));
+    setUserSpeaking(room.id, seat.userId, false);
     applyMicLeaveFromRoom(room, seat.userId, seat.seat);
   } else if (action === 'admin_force_mute' && seat && seat.userId) {
     if (!hasPermission(rank, 'moderate_mics') && !room.operators.includes(user.id)) {
@@ -1485,6 +1548,9 @@ app.post('/api/rooms/:id/mic', requireAuth, (req: AuthedRequest, res) => {
       return;
     }
     const isNowMuted = toggleGlobalAdminMicMute(state.rooms, target);
+    if (isNowMuted) {
+      clearUserSpeakingAllRooms(target.id);
+    }
     addStateLog(
       isNowMuted ? 'كتم مايك عام' : 'فك كتم مايك عام',
       user.username,

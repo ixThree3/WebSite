@@ -40,6 +40,12 @@ import {
   type SavedAccountEntry,
 } from './device.ts';
 import { normalizeSafeHttpUrl } from '../shared/richText.ts';
+import {
+  RoomVoiceManager,
+  startLocalMicMonitor,
+  type LocalMicMonitorHandle,
+  type WebRtcSignalPayload,
+} from './voiceAudio.ts';
 
 export type MainViewMode = 'rooms' | 'wall' | 'pm' | 'cp';
 export type ActiveDrawer = 'none' | 'rooms' | 'members';
@@ -175,10 +181,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   const wsRef = useRef<WebSocket | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
+  const micMonitorRef = useRef<LocalMicMonitorHandle | null>(null);
+  const micStartInFlightRef = useRef<Promise<void> | null>(null);
+  const micAutoTriedKeyRef = useRef<string>('');
+  const [localStreamState, setLocalStreamState] = useState<MediaStream | null>(null);
+  const voiceManagerRef = useRef<RoomVoiceManager | null>(null);
   const activeRoomIdRef = useRef(activeRoomId);
   activeRoomIdRef.current = activeRoomId;
+  const meIdRef = useRef<string | null>(null);
+  meIdRef.current = me?.id ?? null;
 
   const notify = useCallback((message: string, tone: ToastNotice['tone'] = 'info') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -204,63 +215,108 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setPendingExternalUrl(null);
   }, []);
 
-  const stopAudioCapture = useCallback(() => {
-    if (localStreamRef.current) {
-      for (const track of localStreamRef.current.getTracks()) {
-        track.stop();
-      }
-      localStreamRef.current = null;
-    }
-    if (audioCtxRef.current) {
-      void audioCtxRef.current.close().catch(() => {});
-      audioCtxRef.current = null;
-    }
+  useEffect(() => {
+    const manager = new RoomVoiceManager({
+      onSendSignal: (targetUserId, roomId, signal: WebRtcSignalPayload) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(
+            JSON.stringify({
+              event: 'webrtc:signal',
+              targetUserId,
+              roomId,
+              signal,
+            })
+          );
+        }
+      },
+    });
+    voiceManagerRef.current = manager;
+    return () => {
+      manager.destroy();
+      voiceManagerRef.current = null;
+    };
+  }, []);
+
+  const emitSpeakingState = useCallback((userId: string, roomId: string, speaking: boolean) => {
     setSpeakingUserIds((prev) => {
-      if (!me) return prev;
+      const has = prev.has(userId);
+      if (has === speaking) return prev;
       const next = new Set(prev);
-      next.delete(me.id);
+      if (speaking) next.add(userId);
+      else next.delete(userId);
       return next;
     });
-  }, [me]);
+    if (wsRef.current?.readyState === WebSocket.OPEN && roomId) {
+      wsRef.current.send(
+        JSON.stringify({
+          event: 'mic:speaking',
+          roomId,
+          speaking,
+        })
+      );
+    }
+  }, []);
+
+  const stopAudioCapture = useCallback(() => {
+    if (micMonitorRef.current) {
+      micMonitorRef.current.stop();
+      micMonitorRef.current = null;
+    }
+    setLocalStreamState(null);
+    const uid = meIdRef.current;
+    if (uid) {
+      emitSpeakingState(uid, activeRoomIdRef.current, false);
+    }
+  }, [emitSpeakingState]);
 
   const startAudioMonitor = useCallback(
-    async (userId: string) => {
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) return;
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        localStreamRef.current = stream;
-        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        if (!AudioCtx) return;
-        const ctx = new AudioCtx();
-        audioCtxRef.current = ctx;
-        const src = ctx.createMediaStreamSource(stream);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        src.connect(analyser);
-        const data = new Uint8Array(analyser.frequencyBinCount);
-        const tick = () => {
-          if (!localStreamRef.current) return;
-          analyser.getByteFrequencyData(data);
-          let sum = 0;
-          for (let i = 0; i < data.length; i++) sum += data[i]!;
-          const avg = sum / data.length;
-          const isSpeaking = avg > 14;
-          setSpeakingUserIds((prev) => {
-            const has = prev.has(userId);
-            if (has === isSpeaking) return prev;
-            const next = new Set(prev);
-            if (isSpeaking) next.add(userId);
-            else next.delete(userId);
-            return next;
-          });
-          requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
-      } catch {
-        // Microphone denied or headless browser — seat still functions in UI
+    async (
+      userId: string,
+      roomId: string,
+      initiallyMuted: boolean
+    ): Promise<boolean> => {
+      if (micMonitorRef.current) {
+        micMonitorRef.current.setMuted(initiallyMuted);
+        return true;
       }
+      if (micStartInFlightRef.current) {
+        await micStartInFlightRef.current;
+        return Boolean(micMonitorRef.current);
+      }
+      let captured = false;
+      const task = (async () => {
+        try {
+          const handle = await startLocalMicMonitor({
+            initiallyMuted,
+            onSpeakingChange: (speaking) => {
+              if (meIdRef.current !== userId) return;
+              emitSpeakingState(userId, activeRoomIdRef.current || roomId, speaking);
+            },
+            onTrackEnded: () => {
+              micMonitorRef.current = null;
+              setLocalStreamState(null);
+              emitSpeakingState(userId, activeRoomIdRef.current || roomId, false);
+            },
+          });
+          // Guard if user already left seat while getUserMedia prompt was open
+          if (meIdRef.current !== userId) {
+            handle.stop();
+            return;
+          }
+          micMonitorRef.current = handle;
+          setLocalStreamState(handle.stream);
+          captured = true;
+        } catch {
+          captured = false;
+        } finally {
+          micStartInFlightRef.current = null;
+        }
+      })();
+      micStartInFlightRef.current = task;
+      await task;
+      return captured;
     },
-    []
+    [emitSpeakingState]
   );
 
   const refreshBootstrap = useCallback(async () => {
@@ -400,6 +456,36 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               setCpVersion((v) => v + 1);
               void refreshBootstrap();
               break;
+            case 'mic:speaking': {
+              const sp = parsed.payload as { roomId: string; userId: string; speaking: boolean };
+              if (sp.roomId === activeRoomIdRef.current) {
+                setSpeakingUserIds((prev) => {
+                  const has = prev.has(sp.userId);
+                  if (has === sp.speaking) return prev;
+                  const next = new Set(prev);
+                  if (sp.speaking) next.add(sp.userId);
+                  else next.delete(sp.userId);
+                  return next;
+                });
+              }
+              break;
+            }
+            case 'mic:speaking_sync': {
+              const sync = parsed.payload as { roomId: string; userIds: string[] };
+              if (sync.roomId === activeRoomIdRef.current) {
+                setSpeakingUserIds(new Set(sync.userIds));
+              }
+              break;
+            }
+            case 'webrtc:signal': {
+              const sig = parsed.payload as {
+                fromUserId: string;
+                roomId?: string;
+                signal: WebRtcSignalPayload;
+              };
+              void voiceManagerRef.current?.handleSignal(sig);
+              break;
+            }
           }
         } catch {
           // ignore
@@ -604,6 +690,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ password }),
         }
       );
+      if (activeRoomIdRef.current !== roomId) {
+        stopAudioCapture();
+        setSpeakingUserIds(new Set());
+      }
       setActiveRoomId(roomId);
       setMessagesByRoom((prev) => ({ ...prev, [roomId]: res.messages }));
       if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -611,7 +701,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
       setViewMode('rooms');
     },
-    []
+    [stopAudioCapture]
   );
 
   const createRoom = useCallback(
@@ -663,12 +753,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       if (!me) return;
       setMicBusy(true);
       try {
-        await apiFetch(`/api/rooms/${roomId}/mic`, {
+        const res = await apiFetch<{ room: Room }>(`/api/rooms/${roomId}/mic`, {
           method: 'POST',
           body: JSON.stringify({ action: 'join', seat }),
         });
-        await startAudioMonitor(me.id);
-        notify(`صعدت على مايك ${seat}`, 'success');
+        const joinedSeat = res.room.seats.find((s) => s.seat === seat);
+        const initiallyMuted = Boolean(
+          joinedSeat?.muted || joinedSeat?.forceMuted || me.micForceMuted
+        );
+        micAutoTriedKeyRef.current = `${roomId}:${seat}:${me.id}`;
+        const micOk = await startAudioMonitor(me.id, roomId, initiallyMuted);
+        if (micOk) {
+          notify(`صعدت على مايك ${seat}`, 'success');
+        } else {
+          notify(`صعدت على مايك ${seat} — تأكد من منح صلاحية الميكروفون في المتصفح لنقل الصوت`, 'info');
+        }
       } finally {
         setMicBusy(false);
       }
@@ -863,6 +962,69 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     () => rooms.find((r) => r.id === activeRoomId) ?? rooms[0] ?? null,
     [rooms, activeRoomId]
   );
+
+  const mySeat = useMemo(() => {
+    if (!me || !activeRoom) return null;
+    return activeRoom.seats.find((s) => s.userId === me.id) ?? null;
+  }, [activeRoom, me]);
+
+  const isMySeatMuted = Boolean(
+    mySeat && (mySeat.muted || mySeat.forceMuted || me?.micForceMuted)
+  );
+
+  // Keep local mic stream mute & lifecycle strictly synchronized with authoritative seat state
+  useEffect(() => {
+    if (!me || !activeRoom || !mySeat || !activeRoom.micEnabled) {
+      micAutoTriedKeyRef.current = '';
+      if (micMonitorRef.current) {
+        stopAudioCapture();
+      }
+      return;
+    }
+
+    if (micMonitorRef.current) {
+      micMonitorRef.current.setMuted(isMySeatMuted);
+      if (isMySeatMuted) {
+        emitSpeakingState(me.id, activeRoom.id, false);
+      }
+    } else {
+      // Auto-restore mic capture if user reloaded while already holding a mic seat
+      const key = `${activeRoom.id}:${mySeat.seat}:${me.id}`;
+      if (micAutoTriedKeyRef.current !== key) {
+        micAutoTriedKeyRef.current = key;
+        void startAudioMonitor(me.id, activeRoom.id, isMySeatMuted);
+      }
+    }
+  }, [
+    activeRoom,
+    emitSpeakingState,
+    isMySeatMuted,
+    me,
+    mySeat,
+    startAudioMonitor,
+    stopAudioCapture,
+  ]);
+
+  // Synchronize WebRTC room voice peers & local-mute audio elements
+  useEffect(() => {
+    const seatedUserIds = new Set<string>(
+      activeRoom?.micEnabled
+        ? activeRoom.seats.map((s) => s.userId).filter((id): id is string => Boolean(id))
+        : []
+    );
+    const roomOnlineUserIds = activeRoom
+      ? onlineUsers.filter((u) => u.roomId === activeRoom.id).map((u) => u.id)
+      : [];
+
+    voiceManagerRef.current?.syncState({
+      meId: me?.id ?? null,
+      roomId: activeRoom?.id ?? null,
+      roomOnlineUserIds,
+      seatedUserIds,
+      localStream: localStreamState,
+      locallyMutedUserIds,
+    });
+  }, [activeRoom, localStreamState, locallyMutedUserIds, me?.id, onlineUsers]);
 
   // Sync activeRoomRef read-only effect
   useEffect(() => {

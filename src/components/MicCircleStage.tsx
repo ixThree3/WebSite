@@ -174,38 +174,40 @@ export function MicCircleStage({ room }: { room: Room }) {
         </div>
       </div>
 
-      <ul className="mx-auto flex w-fit max-w-full items-start justify-center gap-1.5 sm:gap-6 overflow-x-auto pb-1 scrollbar-thin">
-        {room.seats.map((seat) => {
-          const occupant = seat.userId
-            ? onlineUsers.find((u) => u.id === seat.userId) ?? null
-            : null;
-          const isMine = occupant?.id === me?.id;
-          const isGloballyMuted = Boolean(occupant && (seat.forceMuted || occupant.micForceMuted));
-          const isLocallyMuted = Boolean(
-            occupant && !isMine && locallyMutedUserIds.has(occupant.id)
-          );
-          const isSpeaking = Boolean(
-            occupant &&
-              !seat.muted &&
-              !isGloballyMuted &&
-              !isLocallyMuted &&
-              speakingUserIds.has(occupant.id)
-          );
-          const isPopoverOpen = Boolean(
-            popover && popover.seatNum === seat.seat && occupant && popover.occupantId === occupant.id
-          );
+      <div className="w-full overflow-x-auto scrollbar-thin">
+        <ul className="mx-auto flex w-max min-w-full items-start justify-center gap-1.5 sm:gap-6 pt-3 pb-2 px-1 sm:px-2">
+          {room.seats.map((seat) => {
+            const occupant = seat.userId
+              ? onlineUsers.find((u) => u.id === seat.userId) ?? null
+              : null;
+            const isMine = occupant?.id === me?.id;
+            const isGloballyMuted = Boolean(occupant && (seat.forceMuted || occupant.micForceMuted));
+            const isLocallyMuted = Boolean(
+              occupant && !isMine && locallyMutedUserIds.has(occupant.id)
+            );
+            const isSpeaking = Boolean(
+              occupant &&
+                !seat.muted &&
+                !isGloballyMuted &&
+                !isLocallyMuted &&
+                speakingUserIds.has(occupant.id)
+            );
+            const isPopoverOpen = Boolean(
+              popover && popover.seatNum === seat.seat && occupant && popover.occupantId === occupant.id
+            );
 
-          return (
-            <li
-              key={seat.seat}
-              data-mic-seat={seat.seat}
-              className="flex w-[66px] sm:w-24 shrink-0 flex-col items-center gap-1.5"
-            >
+            return (
+              <li
+                key={seat.seat}
+                data-mic-seat={seat.seat}
+                className="flex w-[60px] sm:w-24 shrink-0 flex-col items-center gap-1.5"
+              >
               <div className="relative">
                 <button
                   type="button"
                   disabled={micBusy}
                   data-mic-avatar={seat.seat}
+                  data-speaking={isSpeaking ? 'true' : 'false'}
                   aria-expanded={occupant ? isPopoverOpen : undefined}
                   aria-haspopup={occupant ? 'menu' : undefined}
                   onClick={(e) => void handleSeatClick(e, seat.seat, occupant)}
@@ -214,24 +216,31 @@ export function MicCircleStage({ room }: { room: Room }) {
                       ? `خيارات مايك ${seat.seat}: ${occupant.username}`
                       : `اصعد على مايك ${seat.seat}`
                   }
-                  className={`relative flex size-11 sm:size-15 items-center justify-center rounded-full transition outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  className={`relative flex size-12 sm:size-15 items-center justify-center rounded-full transition outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                     occupant
                       ? 'bg-surface'
                       : 'border-2 border-dashed border-primary/45 bg-background/60 text-primary hover:border-primary hover:bg-accent'
                   } ${
-                    isPopoverOpen
+                    isSpeaking
+                      ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-surface animate-speak'
+                      : isPopoverOpen
                       ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface'
                       : isGloballyMuted
                       ? 'ring-2 ring-destructive/80 ring-offset-2 ring-offset-surface'
                       : isLocallyMuted
                       ? 'ring-2 ring-amber-400/80 ring-offset-2 ring-offset-surface'
-                      : isMine
-                      ? 'ring-2 ring-primary/80 ring-offset-2 ring-offset-surface'
                       : ''
-                  } ${isSpeaking ? 'animate-speak' : ''}`}
+                  }`}
                 >
                   {occupant ? (
-                    <UserAvatar user={occupant} size="lg" className="size-11 sm:size-15 text-sm sm:text-lg" />
+                    <span className="flex size-full items-center justify-center overflow-hidden rounded-full border border-border bg-surface-raised">
+                      <UserAvatar
+                        user={occupant}
+                        size="full"
+                        fit="cover-top"
+                        className="border-0 text-sm sm:text-lg"
+                      />
+                    </span>
                   ) : (
                     <span className="flex flex-col items-center">
                       <Mic className="size-4 sm:size-5" />
@@ -304,7 +313,8 @@ export function MicCircleStage({ room }: { room: Room }) {
             </li>
           );
         })}
-      </ul>
+        </ul>
+      </div>
 
       {/* Avatar-triggered Mic Action Popover (Fixed positioning prevents clipping) */}
       {popover && activeSeat && activeOccupant && (
