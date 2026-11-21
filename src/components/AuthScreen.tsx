@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react';
 import {
   ArrowDown,
+  ChevronLeft,
   Crown,
   DoorOpen,
   Eye,
@@ -15,7 +16,7 @@ import {
 } from 'lucide-react';
 import gulfNightHero from '../assets/gulf-night.jpg';
 import { useChat } from '../lib/useChatClient.tsx';
-import { UserAvatar, UserDisplayName } from './UserBadges.tsx';
+import { Logo, UserAvatar, UserDisplayName } from './UserBadges.tsx';
 
 type AuthTab = 'member' | 'register' | 'guest';
 
@@ -83,15 +84,16 @@ export function AuthScreen() {
           <div className="absolute inset-0 -z-10 bg-gradient-night" />
           <div className="mx-auto flex max-w-6xl flex-col items-center px-4 pb-10 pt-14 text-center sm:pt-20">
             {front.showOnlineCountPublic && (
-              <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-border bg-surface/80 px-3.5 py-1.5 text-xs font-medium text-secondary-foreground backdrop-blur">
-                <Users className="size-3.5 text-success" />
+              <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-xs text-secondary-foreground backdrop-blur">
+                <span className="size-2 rounded-full bg-success" />
+                <Users className="size-3.5" />
                 <span className="tabular-nums">متصل الآن {onlineUsers.length}</span>
               </div>
             )}
-            <h1 className="font-display text-4xl sm:text-6xl font-bold text-primary drop-shadow">
-              {front.siteName}
+            <h1 className="font-display text-4xl sm:text-6xl font-bold drop-shadow">
+              <Logo siteName={front.siteName} />
             </h1>
-            <p className="mt-3 max-w-xl text-sm sm:text-base text-foreground/90">
+            <p className="mt-3 max-w-xl text-sm sm:text-base text-muted-foreground">
               {front.heroSubtitle}
             </p>
           </div>
@@ -103,10 +105,10 @@ export function AuthScreen() {
           {savedAccounts.length > 0 && (
             <section
               data-testid="saved-accounts-prompt"
-              className="rounded-2xl border border-primary/45 bg-gradient-panel p-4 sm:p-5 shadow-xl space-y-3.5"
+              className="rounded-xl border border-primary/40 bg-gradient-panel p-4 sm:p-5 shadow-panel space-y-3.5"
             >
               <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-sm font-bold text-primary">
+                <div className="flex items-center gap-2 text-sm font-semibold text-primary">
                   <Sparkles className="size-4 shrink-0" />
                   <span>مرحباً بعودتك — الدخول السريع</span>
                 </div>
@@ -119,7 +121,7 @@ export function AuthScreen() {
                   return (
                     <div
                       key={acc.quickLoginToken}
-                      className="rounded-xl border border-border bg-background/80 p-3 space-y-2.5"
+                      className="rounded-lg border border-border bg-surface/80 p-3 space-y-2.5"
                     >
                       <div className="flex items-center justify-between gap-2.5">
                         <div className="flex items-center gap-2.5 min-w-0">
@@ -143,7 +145,7 @@ export function AuthScreen() {
                           title="إزالة الحساب المحفوظ"
                           aria-label={`إزالة حساب ${acc.username}`}
                           onClick={() => void deleteSavedAccount(acc.quickLoginToken)}
-                          className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/15 hover:text-destructive transition shrink-0"
+                          className="rounded-md p-2 text-muted-foreground hover:bg-destructive/15 hover:text-destructive transition shrink-0 cursor-pointer"
                         >
                           <Trash2 className="size-4" />
                         </button>
@@ -167,7 +169,7 @@ export function AuthScreen() {
                             setBusy(false);
                           }
                         }}
-                        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-gold px-4 text-xs sm:text-sm font-bold text-primary-foreground hover:brightness-105 disabled:opacity-60 transition"
+                        className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-gradient-gold px-4 text-xs sm:text-sm font-semibold text-primary-foreground shadow-gold hover:brightness-110 disabled:opacity-50 transition cursor-pointer"
                       >
                         <LogIn className="size-4" />
                         <span>تسجيل دخول سريع للموقع</span>
@@ -181,7 +183,7 @@ export function AuthScreen() {
                 type="button"
                 data-action="use-another-account"
                 onClick={handleUseAnotherAccount}
-                className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-border bg-surface/80 px-4 text-xs font-semibold text-foreground hover:border-primary/60 hover:bg-surface-raised transition"
+                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-border bg-surface-raised/70 px-4 text-xs font-medium text-foreground backdrop-blur hover:bg-accent transition cursor-pointer"
               >
                 <ArrowDown className="size-3.5 text-primary" />
                 <span>استعمال حساب آخر</span>
@@ -191,17 +193,18 @@ export function AuthScreen() {
 
           <div
             ref={authFormRef}
-            className="rounded-2xl border border-border bg-gradient-panel p-5 sm:p-6 shadow-2xl"
+            className="rounded-xl border border-border bg-gradient-panel p-5 sm:p-6 shadow-panel"
           >
-            <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-background/70 p-1 border border-border/70">
+            {/* Tabs matching tabs.tsx */}
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1 text-muted-foreground">
               {regAllowed && (
                 <button
                   type="button"
                   onClick={() => setTab('register')}
-                  className={`rounded-lg py-2 text-xs sm:text-sm font-semibold transition whitespace-nowrap ${
+                  className={`rounded-md px-2 py-1.5 text-xs sm:text-sm font-medium transition whitespace-nowrap cursor-pointer ${
                     tab === 'register'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'bg-background text-foreground shadow'
+                      : 'hover:text-foreground'
                   }`}
                 >
                   تسجيل عضوية
@@ -210,10 +213,10 @@ export function AuthScreen() {
               <button
                 type="button"
                 onClick={() => setTab('member')}
-                className={`rounded-lg py-2 text-xs sm:text-sm font-semibold transition whitespace-nowrap ${
+                className={`rounded-md px-2 py-1.5 text-xs sm:text-sm font-medium transition whitespace-nowrap cursor-pointer ${
                   tab === 'member'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-background text-foreground shadow'
+                    : 'hover:text-foreground'
                 }`}
               >
                 دخول الأعضاء
@@ -222,10 +225,10 @@ export function AuthScreen() {
                 <button
                   type="button"
                   onClick={() => setTab('guest')}
-                  className={`rounded-lg py-2 text-xs sm:text-sm font-semibold transition whitespace-nowrap ${
+                  className={`rounded-md px-2 py-1.5 text-xs sm:text-sm font-medium transition whitespace-nowrap cursor-pointer ${
                     tab === 'guest'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'bg-background text-foreground shadow'
+                      : 'hover:text-foreground'
                   }`}
                 >
                   دخول الزوار
@@ -234,7 +237,7 @@ export function AuthScreen() {
             </div>
 
             {tab === 'register' && isLocalOwnerDevice && (
-              <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-primary/35 bg-primary/10 px-3.5 py-2.5 text-xs leading-relaxed text-primary">
+              <div className="mt-4 flex items-start gap-2.5 rounded-lg border border-primary/35 bg-primary/10 px-3.5 py-2.5 text-xs leading-relaxed text-primary">
                 <Crown className="size-4 shrink-0 mt-0.5" />
                 <span>
                   أي عضوية تنشئها من جهازك هذا تأخذ ترقية <strong>المالك</strong> تلقائياً حتى
@@ -256,7 +259,7 @@ export function AuthScreen() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder={tab === 'guest' ? 'مثال: نجم الخليج' : 'اكتب اسمك...'}
-                  className="h-11 w-full rounded-xl border border-border bg-background/80 px-3.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
+                  className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 />
               </div>
 
@@ -271,7 +274,7 @@ export function AuthScreen() {
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
                     placeholder="مثال: ✦ اسمك ✦"
-                    className="h-11 w-full rounded-xl border border-border bg-background/80 px-3.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
+                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   />
                 </div>
               )}
@@ -289,13 +292,13 @@ export function AuthScreen() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••"
-                      className="h-11 w-full rounded-xl border border-border bg-background/80 pe-3.5 ps-11 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
+                      className="flex h-10 w-full rounded-md border border-input bg-transparent pe-3 ps-10 py-1 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPass((v) => !v)}
                       aria-label={showPass ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
-                      className="absolute start-1.5 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground"
+                      className="absolute start-1.5 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground cursor-pointer"
                     >
                       {showPass ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
@@ -306,7 +309,7 @@ export function AuthScreen() {
               <button
                 type="submit"
                 disabled={busy}
-                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-gold text-sm font-bold text-primary-foreground transition hover:brightness-105 disabled:opacity-60"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-gold px-6 text-sm font-semibold text-primary-foreground shadow-gold transition hover:brightness-110 disabled:opacity-50 cursor-pointer"
               >
                 {tab === 'register' ? <UserPlus className="size-4" /> : <LogIn className="size-4" />}
                 {busy
@@ -347,10 +350,12 @@ export function AuthScreen() {
           </div>
         </div>
 
-        <aside className="rounded-2xl border border-border bg-surface overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        {/* Online List matching OnlineList.tsx */}
+        <aside className="rounded-xl border border-border bg-surface overflow-hidden">
+          <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
             <h2 className="font-display text-lg">المتواجدين الآن</h2>
-            <span className="text-xs font-semibold text-primary tabular-nums">
+            <span className="flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-0.5 text-xs text-secondary-foreground tabular-nums">
+              <span className="size-2 rounded-full bg-success" />
               {onlineUsers.length} متصل
             </span>
           </div>
@@ -358,20 +363,24 @@ export function AuthScreen() {
             {onlineUsers.map((u) => {
               const rank = ranks.find((r) => r.id === u.rankId);
               return (
-                <li key={u.id} className="flex items-center gap-3 px-4 py-2.5">
+                <li
+                  key={u.id}
+                  className="group flex w-full items-center gap-3 px-3 py-2 transition hover:bg-accent/50"
+                >
                   <UserAvatar user={u} size="sm" />
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 text-start">
                     <UserDisplayName user={u} rank={rank} showRankLabel className="text-sm" />
                     <p className="truncate text-xs text-muted-foreground">
                       {u.status || 'متصل في الدردشة'}
                     </p>
                   </div>
+                  <ChevronLeft className="size-4 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
                 </li>
               );
             })}
             {onlineUsers.length === 0 && (
-              <li className="px-4 py-6 text-center text-sm text-muted-foreground">
-                لا يوجد متواجدون حالياً
+              <li className="px-3 py-6 text-center text-sm text-muted-foreground">
+                لا يوجد أحد متصل الآن
               </li>
             )}
           </ul>

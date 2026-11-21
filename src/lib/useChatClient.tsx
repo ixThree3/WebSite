@@ -9,10 +9,12 @@ import {
   type ReactNode,
 } from 'react';
 import type {
+  ActivityStatus,
   BootstrapResponse,
   ChatMessage,
   CpPayload,
   FrontSettings,
+  MediaKind,
   NotificationItem,
   PrivateMessage,
   PublicUser,
@@ -41,6 +43,15 @@ import {
 } from './device.ts';
 import { normalizeSafeHttpUrl } from '../shared/richText.ts';
 import {
+  markNotificationsAsRead,
+  removePmNotificationsForPartner,
+  validateAlertMessage,
+} from '../shared/chatHistory.ts';
+import {
+  checkPrivacyMessagePermission,
+  computeActivityStatus,
+} from '../shared/presenceStatus.ts';
+import {
   RoomVoiceManager,
   startLocalMicMonitor,
   type LocalMicMonitorHandle,
@@ -54,6 +65,18 @@ export interface ToastNotice {
   id: string;
   message: string;
   tone: 'info' | 'success' | 'error';
+}
+
+export interface AlertPopupItem {
+  id: string;
+  actorId: string;
+  actorName: string;
+  actorColor: string;
+  actorNameStyle?: string;
+  actorFontFamily?: string;
+  actorAvatarUrl: string | null;
+  message?: string;
+  createdAt: number;
 }
 
 interface ChatContextValue {
@@ -74,6 +97,7 @@ interface ChatContextValue {
   front: FrontSettings;
   siteSettings: SiteSettings;
   privateMessages: PrivateMessage[];
+  pmPeers: PublicUser[];
   notifications: NotificationItem[];
   unreadNotificationCount: number;
   markNotificationsRead: (id?: string) => Promise<void>;
@@ -85,14 +109,20 @@ interface ChatContextValue {
   activeDrawer: ActiveDrawer;
   setActiveDrawer: (drawer: ActiveDrawer) => void;
   selectedPmUserId: string | null;
+  setSelectedPmUserId: (userId: string | null) => void;
   openPrivateChatWith: (userId: string) => void;
   profileModalUserId: string | null;
   openMemberProfile: (userId: string | null) => void;
   pendingExternalUrl: string | null;
   openExternalLink: (url: string) => void;
   closeExternalLink: () => void;
+  lightboxImage: { src: string; alt?: string } | null;
+  openImageLightbox: (src: string, alt?: string) => void;
+  closeImageLightbox: () => void;
   toasts: ToastNotice[];
   notify: (message: string, tone?: ToastNotice['tone']) => void;
+  alertPopups: AlertPopupItem[];
+  dismissAlertPopup: (id: string) => void;
   // Mic / Audio state
   speakingUserIds: Set<string>;
   locallyMutedUserIds: Set<string>;
@@ -118,10 +148,15 @@ interface ChatContextValue {
   sendRoomMessage: (
     roomId: string,
     body: string,
-    options?: { mediaUrl?: string; replyTo?: { id: string; username: string; body: string } | null }
+    options?: {
+      mediaUrl?: string;
+      mediaType?: MediaKind;
+      replyTo?: { id: string; username: string; body: string } | null;
+    }
   ) => Promise<void>;
   deleteRoomMessage: (roomId: string, msgId: string) => Promise<void>;
   likeUser: (userId: string) => Promise<void>;
+  sendUserAlert: (userId: string, message: string) => Promise<void>;
   updateMyProfile: (patch: {
     topic?: string;
     status?: string;
@@ -132,7 +167,16 @@ interface ChatContextValue {
     hideCountryFlag?: boolean;
     newPassword?: string;
   }) => Promise<void>;
-  createWallPost: (body: string, mediaUrl?: string | null) => Promise<void>;
+  updatePrivacySettings: (patch: {
+    activityStatus?: ActivityStatus | null;
+    lockPm?: boolean;
+    lockAlerts?: boolean;
+  }) => Promise<PublicUser>;
+  createWallPost: (
+    body: string,
+    mediaUrl?: string | null,
+    mediaType?: MediaKind | null
+  ) => Promise<void>;
   toggleWallLike: (postId: string) => Promise<void>;
   commentWallPost: (
     postId: string,
@@ -141,7 +185,13 @@ interface ChatContextValue {
   ) => Promise<void>;
   toggleWallCommentLike: (postId: string, commentId: string) => Promise<void>;
   deleteWallPost: (postId: string) => Promise<void>;
-  sendPrivateMessage: (toUserId: string, body: string) => Promise<void>;
+  deleteWallComment: (postId: string, commentId: string) => Promise<void>;
+  sendPrivateMessage: (
+    toUserId: string,
+    body: string,
+    options?: { mediaUrl?: string | null; mediaType?: MediaKind | null }
+  ) => Promise<void>;
+  deletePrivateMessage: (pmId: string) => Promise<void>;
   cpVersion: number;
   fetchCpState: () => Promise<CpPayload>;
 }
@@ -165,6 +215,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [front, setFront] = useState<FrontSettings>(DEFAULT_FRONT_SETTINGS);
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
   const [privateMessages, setPrivateMessages] = useState<PrivateMessage[]>([]);
+  const [pmPeers, setPmPeers] = useState<PublicUser[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [savedAccounts, setSavedAccounts] = useState<SavedAccountEntry[]>(() => getSavedAccounts());
   const [viewMode, setViewMode] = useState<MainViewMode>('rooms');
@@ -172,7 +223,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [selectedPmUserId, setSelectedPmUserId] = useState<string | null>(null);
   const [profileModalUserId, setProfileModalUserId] = useState<string | null>(null);
   const [pendingExternalUrl, setPendingExternalUrl] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{ src: string; alt?: string } | null>(null);
   const [toasts, setToasts] = useState<ToastNotice[]>([]);
+  const [alertPopups, setAlertPopups] = useState<AlertPopupItem[]>([]);
   const [cpVersion, setCpVersion] = useState(0);
   const [micBusy, setMicBusy] = useState(false);
   const [speakingUserIds, setSpeakingUserIds] = useState<Set<string>>(new Set());
@@ -180,6 +233,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     () => new Set(getLocallyMutedUserIds())
   );
 
+  const cleanRoomAfterLogoutRef = useRef<boolean>(
+    typeof window !== 'undefined' &&
+      window.sessionStorage.getItem('majlis_clean_room_after_logout') === '1'
+  );
   const wsRef = useRef<WebSocket | null>(null);
   const micMonitorRef = useRef<LocalMicMonitorHandle | null>(null);
   const micStartInFlightRef = useRef<Promise<void> | null>(null);
@@ -190,6 +247,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   activeRoomIdRef.current = activeRoomId;
   const meIdRef = useRef<string | null>(null);
   meIdRef.current = me?.id ?? null;
+  const viewModeRef = useRef<MainViewMode>(viewMode);
+  viewModeRef.current = viewMode;
+  const selectedPmUserIdRef = useRef<string | null>(selectedPmUserId);
+  selectedPmUserIdRef.current = selectedPmUserId;
+  const lastInteractionAtRef = useRef<number>(Date.now());
+  const lastSentStatusRef = useRef<ActivityStatus>('online');
+  const isOnMicRef = useRef<boolean>(false);
+  const manualStatusRef = useRef<ActivityStatus | null>(null);
+  manualStatusRef.current = me?.manualActivityStatus ?? null;
+  const onlineUsersRef = useRef<PublicUser[]>(onlineUsers);
+  onlineUsersRef.current = onlineUsers;
+  const pmPeersRef = useRef<PublicUser[]>(pmPeers);
+  pmPeersRef.current = pmPeers;
+
+  const dismissAlertPopup = useCallback((id: string) => {
+    setAlertPopups((prev) => prev.filter((a) => a.id !== id));
+  }, []);
 
   const notify = useCallback((message: string, tone: ToastNotice['tone'] = 'info') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -213,6 +287,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const closeExternalLink = useCallback(() => {
     setPendingExternalUrl(null);
+  }, []);
+
+  const openImageLightbox = useCallback((src: string, alt?: string) => {
+    if (!src) return;
+    setLightboxImage({ src, alt });
+  }, []);
+
+  const closeImageLightbox = useCallback(() => {
+    setLightboxImage(null);
   }, []);
 
   useEffect(() => {
@@ -335,6 +418,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setFront(data.front);
       setSiteSettings(data.siteSettings);
       setPrivateMessages(data.privateMessages);
+      setPmPeers(data.pmPeers ?? []);
       setNotifications(data.notifications ?? []);
 
       if (data.me) {
@@ -422,11 +506,46 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               );
               break;
             }
+            case 'pm:delete': {
+              const del = parsed.payload as { id: string };
+              setPrivateMessages((prev) => prev.filter((x) => x.id !== del.id));
+              break;
+            }
             case 'notification:new': {
               const ntf = parsed.payload as NotificationItem;
+              const viewingSamePm =
+                ntf.kind === 'pm_message' &&
+                viewModeRef.current === 'pm' &&
+                selectedPmUserIdRef.current === ntf.actorId;
+              if (viewingSamePm) {
+                void apiFetch('/api/pm/read', {
+                  method: 'POST',
+                  body: JSON.stringify({ fromUserId: ntf.actorId }),
+                }).catch(() => {});
+                setNotifications((prev) => removePmNotificationsForPartner(prev, ntf.actorId));
+                break;
+              }
               setNotifications((prev) =>
                 prev.some((x) => x.id === ntf.id) ? prev : [ntf, ...prev].slice(0, 60)
               );
+              if (ntf.kind === 'alert') {
+                const popupId = ntf.id;
+                const popupItem: AlertPopupItem = {
+                  id: popupId,
+                  actorId: ntf.actorId,
+                  actorName: ntf.actorName,
+                  actorColor: ntf.actorColor,
+                  actorNameStyle: ntf.actorNameStyle,
+                  actorFontFamily: ntf.actorFontFamily,
+                  actorAvatarUrl: ntf.actorAvatarUrl,
+                  message: ntf.postSnippet,
+                  createdAt: ntf.createdAt || Date.now(),
+                };
+                setAlertPopups((prev) =>
+                  [popupItem, ...prev.filter((a) => a.id !== popupId)].slice(0, 5)
+                );
+                break;
+              }
               const label =
                 ntf.kind === 'profile_like'
                   ? `أعجب ${ntf.actorName} بملفك الشخصي`
@@ -436,6 +555,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                   ? `أعجب ${ntf.actorName} بتعليقك في الحائط`
                   : ntf.kind === 'comment_reply'
                   ? `ردّ ${ntf.actorName} على تعليقك في الحائط`
+                  : ntf.kind === 'pm_message'
+                  ? `رسالة خاصة جديدة من ${ntf.actorName}`
                   : `علّق ${ntf.actorName} على منشورك في الحائط`;
               notify(label, 'info');
               break;
@@ -501,9 +622,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     connectWs();
 
+    const syncActivityStatus = (force = false) => {
+      const next = computeActivityStatus({
+        manualStatus: manualStatusRef.current,
+        isOnMic: isOnMicRef.current,
+        isTabHidden: document.visibilityState === 'hidden',
+        lastInteractionAt: lastInteractionAtRef.current,
+      });
+      if (force || next !== lastSentStatusRef.current) {
+        lastSentStatusRef.current = next;
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ event: 'presence:status', status: next }));
+        }
+      }
+    };
+
+    const recordUserInteraction = () => {
+      lastInteractionAtRef.current = Date.now();
+      syncActivityStatus(false);
+    };
+
     const pingActivity = () => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ event: 'activity' }));
+        syncActivityStatus(true);
       } else if (!closedByCleanup && getStoredSessionToken()) {
         connectWs();
       }
@@ -511,18 +652,24 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     const onVisibleOrFocus = () => {
       if (document.visibilityState === 'visible') {
+        lastInteractionAtRef.current = Date.now();
         pingActivity();
+      } else {
+        syncActivityStatus(false);
       }
     };
 
     heartbeatTimer = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        pingActivity();
-      }
-    }, 45_000);
+      syncActivityStatus(true);
+    }, 15_000);
 
     document.addEventListener('visibilitychange', onVisibleOrFocus);
     window.addEventListener('online', pingActivity);
+    window.addEventListener('pointerdown', recordUserInteraction, { passive: true });
+    window.addEventListener('pointermove', recordUserInteraction, { passive: true });
+    window.addEventListener('keydown', recordUserInteraction, { passive: true });
+    window.addEventListener('touchstart', recordUserInteraction, { passive: true });
+    window.addEventListener('scroll', recordUserInteraction, { passive: true });
 
     return () => {
       closedByCleanup = true;
@@ -530,6 +677,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       document.removeEventListener('visibilitychange', onVisibleOrFocus);
       window.removeEventListener('online', pingActivity);
+      window.removeEventListener('pointerdown', recordUserInteraction);
+      window.removeEventListener('pointermove', recordUserInteraction);
+      window.removeEventListener('keydown', recordUserInteraction);
+      window.removeEventListener('touchstart', recordUserInteraction);
+      window.removeEventListener('scroll', recordUserInteraction);
       wsRef.current?.close();
       wsRef.current = null;
     };
@@ -552,8 +704,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setSavedAccounts(next);
   }, []);
 
+  const consumeCleanRoomFlag = useCallback(() => {
+    const shouldClean = cleanRoomAfterLogoutRef.current;
+    cleanRoomAfterLogoutRef.current = false;
+    try {
+      window.sessionStorage.removeItem('majlis_clean_room_after_logout');
+    } catch {
+      // ignore
+    }
+    return shouldClean;
+  }, []);
+
   const registerAccount = useCallback(
     async (username: string, password: string, topic?: string) => {
+      const cleanRoom = cleanRoomAfterLogoutRef.current;
       const res = await apiFetch<{
         token: string;
         quickLoginToken?: string;
@@ -563,8 +727,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         isLocalOwnerDevice: boolean;
       }>('/api/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ username, password, topic }),
+        body: JSON.stringify({ username, password, topic, cleanRoom }),
       });
+      consumeCleanRoomFlag();
+      setMessagesByRoom({});
       setStoredSessionToken(res.token);
       rememberUser(res.user, res.quickLoginToken);
       setMe(res.user);
@@ -580,11 +746,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         'success'
       );
     },
-    [notify, refreshBootstrap, rememberUser]
+    [consumeCleanRoomFlag, notify, refreshBootstrap, rememberUser]
   );
 
   const loginAccount = useCallback(
     async (username: string, password: string) => {
+      const cleanRoom = cleanRoomAfterLogoutRef.current;
       const res = await apiFetch<{
         token: string;
         quickLoginToken?: string;
@@ -593,8 +760,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         canAccessCp: boolean;
       }>('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, cleanRoom }),
       });
+      consumeCleanRoomFlag();
+      setMessagesByRoom({});
       setStoredSessionToken(res.token);
       rememberUser(res.user, res.quickLoginToken);
       setMe(res.user);
@@ -604,12 +773,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       await refreshBootstrap();
       notify(`تم تسجيل الدخول كـ ${res.user.username}`, 'success');
     },
-    [notify, refreshBootstrap, rememberUser]
+    [consumeCleanRoomFlag, notify, refreshBootstrap, rememberUser]
   );
 
   const quickLogin = useCallback(
     async (quickLoginToken: string) => {
       try {
+        const cleanRoom = cleanRoomAfterLogoutRef.current;
         const res = await apiFetch<{
           token: string;
           quickLoginToken?: string;
@@ -618,8 +788,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           canAccessCp: boolean;
         }>('/api/auth/quick-login', {
           method: 'POST',
-          body: JSON.stringify({ quickLoginToken }),
+          body: JSON.stringify({ quickLoginToken, cleanRoom }),
         });
+        consumeCleanRoomFlag();
+        setMessagesByRoom({});
         setStoredSessionToken(res.token);
         rememberUser(res.user, res.quickLoginToken ?? quickLoginToken);
         setMe(res.user);
@@ -636,7 +808,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         throw err;
       }
     },
-    [notify, refreshBootstrap, rememberUser]
+    [consumeCleanRoomFlag, notify, refreshBootstrap, rememberUser]
   );
 
   const deleteSavedAccount = useCallback(async (quickLoginToken: string) => {
@@ -649,6 +821,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const loginGuest = useCallback(
     async (username: string) => {
+      const cleanRoom = cleanRoomAfterLogoutRef.current;
       const res = await apiFetch<{
         token: string;
         user: PublicUser;
@@ -656,8 +829,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         canAccessCp: boolean;
       }>('/api/auth/guest', {
         method: 'POST',
-        body: JSON.stringify({ username }),
+        body: JSON.stringify({ username, cleanRoom }),
       });
+      consumeCleanRoomFlag();
+      setMessagesByRoom({});
       setStoredSessionToken(res.token);
       setMe(res.user);
       setMyRank(res.rank);
@@ -666,17 +841,30 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       await refreshBootstrap();
       notify(`أهلاً بك كزائر: ${res.user.username}`, 'success');
     },
-    [notify, refreshBootstrap]
+    [consumeCleanRoomFlag, notify, refreshBootstrap]
   );
 
   const logout = useCallback(async () => {
     stopAudioCapture();
     await apiFetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    cleanRoomAfterLogoutRef.current = true;
+    try {
+      window.sessionStorage.setItem('majlis_clean_room_after_logout', '1');
+    } catch {
+      // ignore
+    }
     setStoredSessionToken(null);
     setMe(null);
     setMyRank(null);
     setCanAccessCp(false);
+    setMessagesByRoom({});
+    setPrivateMessages([]);
+    setPmPeers([]);
+    setSelectedPmUserId(null);
     setNotifications([]);
+    setAlertPopups([]);
+    setProfileModalUserId(null);
+    setActiveDrawer('none');
     setViewMode('rooms');
     notify('تم تسجيل الخروج (تم حفظ حسابك للدخول السريع)', 'info');
   }, [notify, stopAudioCapture]);
@@ -721,11 +909,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     async (
       roomId: string,
       body: string,
-      options?: { mediaUrl?: string; replyTo?: { id: string; username: string; body: string } | null }
+      options?: {
+        mediaUrl?: string;
+        mediaType?: MediaKind;
+        replyTo?: { id: string; username: string; body: string } | null;
+      }
     ) => {
       const res = await apiFetch<{ message: ChatMessage }>(`/api/rooms/${roomId}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ body, mediaUrl: options?.mediaUrl, replyTo: options?.replyTo }),
+        body: JSON.stringify({
+          body,
+          mediaUrl: options?.mediaUrl,
+          mediaType: options?.mediaType,
+          replyTo: options?.replyTo,
+        }),
       });
       setMessagesByRoom((prev) => {
         const list = prev[roomId] ?? [];
@@ -838,7 +1035,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const likeUser = useCallback(
     async (userId: string) => {
       await apiFetch(`/api/users/${userId}/like`, { method: 'POST' });
-      notify('تم إرسال لايك للعضو', 'success');
+      notify('تم تسجيل لايك للعضو', 'success');
+    },
+    [notify]
+  );
+
+  const sendUserAlert = useCallback(
+    async (userId: string, message: string) => {
+      const targetUser =
+        onlineUsersRef.current.find((u) => u.id === userId) ??
+        pmPeersRef.current.find((u) => u.id === userId);
+      const privacyCheck = checkPrivacyMessagePermission(targetUser, 'alert');
+      if (!privacyCheck.allowed) {
+        throw new Error(privacyCheck.error);
+      }
+      const check = validateAlertMessage(message);
+      if (!check.ok) {
+        throw new Error(check.error);
+      }
+      await apiFetch(`/api/users/${userId}/alert`, {
+        method: 'POST',
+        body: JSON.stringify({ message: check.text }),
+      });
+      notify('تم إرسال رسالة التنبيه', 'success');
     },
     [notify]
   );
@@ -878,10 +1097,32 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [notify]
   );
 
+  const updatePrivacySettings = useCallback(
+    async (patch: {
+      activityStatus?: ActivityStatus | null;
+      lockPm?: boolean;
+      lockAlerts?: boolean;
+    }) => {
+      const res = await apiFetch<{ user: PublicUser }>('/api/me/privacy', {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+      manualStatusRef.current = res.user.manualActivityStatus ?? null;
+      if (res.user.activityStatus) {
+        lastSentStatusRef.current = res.user.activityStatus;
+      }
+      setMe(res.user);
+      setOnlineUsers((prev) =>
+        prev.map((u) => (u.id === res.user.id ? res.user : u))
+      );
+      notify('تم تحديث إعدادات الخصوصية', 'success');
+      return res.user;
+    },
+    [notify]
+  );
+
   const markNotificationsRead = useCallback(async (id?: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (!id || n.id === id ? { ...n, read: true } : n))
-    );
+    setNotifications((prev) => markNotificationsAsRead(prev, id));
     await apiFetch('/api/notifications/read', {
       method: 'POST',
       body: JSON.stringify(id ? { id } : {}),
@@ -889,10 +1130,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createWallPost = useCallback(
-    async (body: string, mediaUrl?: string | null) => {
+    async (body: string, mediaUrl?: string | null, mediaType?: MediaKind | null) => {
       const res = await apiFetch<{ post: WallPost }>('/api/wall', {
         method: 'POST',
-        body: JSON.stringify({ body, mediaUrl: mediaUrl || null }),
+        body: JSON.stringify({
+          body,
+          mediaUrl: mediaUrl || null,
+          mediaType: mediaType || null,
+        }),
       });
       setWallPosts((prev) =>
         prev.some((p) => p.id === res.post.id) ? prev : [res.post, ...prev]
@@ -935,24 +1180,107 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [notify]
   );
 
-  const sendPrivateMessage = useCallback(async (toUserId: string, body: string) => {
-    const res = await apiFetch<{ pm: PrivateMessage }>('/api/pm', {
-      method: 'POST',
-      body: JSON.stringify({ toUserId, body }),
-    });
-    setPrivateMessages((prev) =>
-      prev.some((x) => x.id === res.pm.id) ? prev : [...prev, res.pm]
-    );
-  }, []);
+  const deleteWallComment = useCallback(
+    async (postId: string, commentId: string) => {
+      const res = await apiFetch<{ post: WallPost }>(
+        `/api/wall/${postId}/comments/${commentId}`,
+        { method: 'DELETE' }
+      );
+      setWallPosts((prev) => prev.map((p) => (p.id === postId ? res.post : p)));
+      notify('تم حذف التعليق', 'info');
+    },
+    [notify]
+  );
 
-  const openPrivateChatWith = useCallback((userId: string) => {
-    setSelectedPmUserId(userId);
-    setViewMode('pm');
-    void apiFetch('/api/pm/read', {
-      method: 'POST',
-      body: JSON.stringify({ fromUserId: userId }),
-    }).catch(() => {});
-  }, []);
+  const sendPrivateMessage = useCallback(
+    async (
+      toUserId: string,
+      body: string,
+      options?: { mediaUrl?: string | null; mediaType?: MediaKind | null }
+    ) => {
+      const targetUser =
+        onlineUsersRef.current.find((u) => u.id === toUserId) ??
+        pmPeersRef.current.find((u) => u.id === toUserId);
+      const privacyCheck = checkPrivacyMessagePermission(targetUser, 'pm');
+      if (!privacyCheck.allowed) {
+        throw new Error(privacyCheck.error);
+      }
+      const res = await apiFetch<{ pm: PrivateMessage }>('/api/pm', {
+        method: 'POST',
+        body: JSON.stringify({
+          toUserId,
+          body,
+          mediaUrl: options?.mediaUrl || null,
+          mediaType: options?.mediaType || null,
+        }),
+      });
+      setPrivateMessages((prev) =>
+        prev.some((x) => x.id === res.pm.id) ? prev : [...prev, res.pm]
+      );
+    },
+    []
+  );
+
+  const deletePrivateMessage = useCallback(
+    async (pmId: string) => {
+      await apiFetch(`/api/pm/${pmId}`, { method: 'DELETE' });
+      setPrivateMessages((prev) => prev.filter((x) => x.id !== pmId));
+      notify('تم حذف الرسالة الخاصة', 'info');
+    },
+    [notify]
+  );
+
+  const openPrivateChatWith = useCallback(
+    (userId: string) => {
+      const knownTarget =
+        onlineUsersRef.current.find((u) => u.id === userId) ??
+        pmPeersRef.current.find((u) => u.id === userId);
+      const privacyCheck = checkPrivacyMessagePermission(knownTarget, 'pm');
+      if (!privacyCheck.allowed) {
+        notify(privacyCheck.error, 'error');
+        return;
+      }
+
+      setSelectedPmUserId(userId);
+      setProfileModalUserId(null);
+      setActiveDrawer('none');
+      setViewMode('pm');
+      setNotifications((prev) => removePmNotificationsForPartner(prev, userId));
+      setPrivateMessages((prev) => {
+        const now = Date.now();
+        let changed = false;
+        const next = prev.map((pm) => {
+          if (pm.fromUserId === userId && pm.readAt === null) {
+            changed = true;
+            return { ...pm, readAt: now };
+          }
+          return pm;
+        });
+        return changed ? next : prev;
+      });
+      void apiFetch<{ user: PublicUser }>(`/api/users/${userId}`)
+        .then((res) => {
+          setPmPeers((prev) =>
+            prev.some((p) => p.id === res.user.id)
+              ? prev.map((p) => (p.id === res.user.id ? res.user : p))
+              : [...prev, res.user]
+          );
+          const freshCheck = checkPrivacyMessagePermission(res.user, 'pm');
+          if (!freshCheck.allowed) {
+            notify(freshCheck.error, 'error');
+            if (selectedPmUserIdRef.current === userId) {
+              setSelectedPmUserId(null);
+            }
+          }
+        })
+        .catch(() => {});
+      void apiFetch('/api/pm/read', {
+        method: 'POST',
+        body: JSON.stringify({ fromUserId: userId }),
+      }).catch(() => {});
+    },
+    [notify]
+  );
 
   const fetchCpState = useCallback(() => {
     return apiFetch<CpPayload>('/api/cp/state');
@@ -967,6 +1295,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (!me || !activeRoom) return null;
     return activeRoom.seats.find((s) => s.userId === me.id) ?? null;
   }, [activeRoom, me]);
+
+  useEffect(() => {
+    const onMic = Boolean(mySeat);
+    isOnMicRef.current = onMic;
+    const next = computeActivityStatus({
+      manualStatus: manualStatusRef.current,
+      isOnMic: onMic,
+      isTabHidden: typeof document !== 'undefined' && document.visibilityState === 'hidden',
+      lastInteractionAt: lastInteractionAtRef.current,
+    });
+    if (next !== lastSentStatusRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+      lastSentStatusRef.current = next;
+      wsRef.current.send(JSON.stringify({ event: 'presence:status', status: next }));
+    }
+  }, [mySeat]);
 
   const isMySeatMuted = Boolean(
     mySeat && (mySeat.muted || mySeat.forceMuted || me?.micForceMuted)
@@ -1062,6 +1405,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     front,
     siteSettings,
     privateMessages,
+    pmPeers,
     notifications,
     unreadNotificationCount,
     markNotificationsRead,
@@ -1073,14 +1417,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     activeDrawer,
     setActiveDrawer,
     selectedPmUserId,
+    setSelectedPmUserId,
     openPrivateChatWith,
     profileModalUserId,
     openMemberProfile: setProfileModalUserId,
     pendingExternalUrl,
     openExternalLink,
     closeExternalLink,
+    lightboxImage,
+    openImageLightbox,
+    closeImageLightbox,
     toasts,
     notify,
+    alertPopups,
+    dismissAlertPopup,
     speakingUserIds,
     locallyMutedUserIds,
     toggleLocalMute,
@@ -1099,13 +1449,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     sendRoomMessage,
     deleteRoomMessage,
     likeUser,
+    sendUserAlert,
     updateMyProfile,
+    updatePrivacySettings,
     createWallPost,
     toggleWallLike,
     commentWallPost,
     toggleWallCommentLike,
     deleteWallPost,
+    deleteWallComment,
     sendPrivateMessage,
+    deletePrivateMessage,
     cpVersion,
     fetchCpState,
   };

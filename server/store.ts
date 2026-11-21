@@ -162,6 +162,11 @@ export function toPublicUser(u: UserAccount): PublicUser {
     hideCountryFlag: Boolean(u.hideCountryFlag),
     roomId: u.roomId,
     online: u.online,
+    activityStatus:
+      u.manualActivityStatus ?? u.activityStatus ?? (u.online ? 'online' : 'idle'),
+    manualActivityStatus: u.manualActivityStatus ?? null,
+    lockPm: Boolean(u.lockPm),
+    lockAlerts: Boolean(u.lockAlerts),
     silencedUntil: u.silencedUntil,
     micForceMuted: Boolean(u.micForceMuted),
     lastSeen: u.lastSeen,

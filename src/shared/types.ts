@@ -45,6 +45,10 @@ export interface RankRole {
 
 export type OfflineStatusColor = 's0' | 's1' | 's2' | 's3';
 
+export type ActivityStatus = 'online' | 'idle' | 'busy';
+
+export type MediaKind = 'image' | 'video';
+
 export interface UserAccount {
   id: string;
   username: string;
@@ -71,6 +75,10 @@ export interface UserAccount {
   deviceToken: string;
   roomId: string | null;
   online: boolean;
+  activityStatus?: ActivityStatus;
+  manualActivityStatus?: ActivityStatus | null;
+  lockPm?: boolean;
+  lockAlerts?: boolean;
   stealth: boolean;
   silencedUntil: number | null;
   micForceMuted?: boolean;
@@ -78,6 +86,7 @@ export interface UserAccount {
   subscriptionGrantedAt: number | null;
   lastSeen: number;
   createdAt: number;
+  roomHistoryCutoff?: number | null;
 }
 
 export interface PublicUser {
@@ -102,6 +111,10 @@ export interface PublicUser {
   hideCountryFlag?: boolean;
   roomId: string | null;
   online: boolean;
+  activityStatus?: ActivityStatus;
+  manualActivityStatus?: ActivityStatus | null;
+  lockPm?: boolean;
+  lockAlerts?: boolean;
   silencedUntil: number | null;
   micForceMuted?: boolean;
   lastSeen: number;
@@ -155,6 +168,7 @@ export interface ChatMessage {
   streakLastDay?: string;
   body: string;
   mediaUrl?: string | null;
+  mediaType?: MediaKind | null;
   replyTo?: { id: string; username: string; body: string } | null;
   isSystem?: boolean;
   systemKind?: 'login' | 'room_enter' | 'room_leave' | 'generic';
@@ -167,6 +181,8 @@ export interface PrivateMessage {
   fromUserId: string;
   toUserId: string;
   body: string;
+  mediaUrl?: string | null;
+  mediaType?: MediaKind | null;
   readAt: number | null;
   createdAt: number;
 }
@@ -202,6 +218,7 @@ export interface WallPost {
   streakLastDay?: string;
   body: string;
   mediaUrl?: string | null;
+  mediaType?: MediaKind | null;
   likes: string[];
   comments: WallComment[];
   createdAt: number;
@@ -423,7 +440,14 @@ export interface NotificationItem {
   actorNameStyle?: string;
   actorFontFamily?: string;
   actorAvatarUrl: string | null;
-  kind: 'profile_like' | 'post_like' | 'post_comment' | 'comment_like' | 'comment_reply';
+  kind:
+    | 'profile_like'
+    | 'post_like'
+    | 'post_comment'
+    | 'comment_like'
+    | 'comment_reply'
+    | 'alert'
+    | 'pm_message';
   postId?: string;
   postSnippet?: string;
   read: boolean;
@@ -472,5 +496,6 @@ export interface BootstrapResponse {
   front: FrontSettings;
   siteSettings: SiteSettings;
   privateMessages: PrivateMessage[];
+  pmPeers?: PublicUser[];
   notifications: NotificationItem[];
 }

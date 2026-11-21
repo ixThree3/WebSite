@@ -71,7 +71,7 @@ export function ShortcutsTab({
           value={trigger}
           onChange={(e) => setTrigger(e.target.value)}
           placeholder="الإختصار \ س1"
-          className="h-9 w-44 rounded-lg border border-border bg-background px-3 text-xs"
+          className="h-9 w-44 rounded-md border border-input bg-transparent px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <input
           type="text"
@@ -79,11 +79,11 @@ export function ShortcutsTab({
           value={expansion}
           onChange={(e) => setExpansion(e.target.value)}
           placeholder="الزخرفة \ السلام عليكم"
-          className="h-9 flex-1 min-w-[200px] rounded-lg border border-border bg-background px-3 text-xs"
+          className="h-9 flex-1 min-w-[200px] rounded-md border border-input bg-transparent px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <button
           type="submit"
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground"
+          className="inline-flex h-9 items-center gap-1.5 rounded-md bg-gradient-gold px-4 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer"
         >
           <Check className="size-3.5" /> إضافة
         </button>
@@ -165,7 +165,7 @@ export function SubsTab({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="البحث في الإشتراكات..."
-            className="h-9 w-full rounded-lg border border-border bg-surface pe-3 ps-8 text-xs"
+            className="h-9 w-full rounded-md border border-input bg-surface pe-3 ps-8 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
       </div>
@@ -271,7 +271,7 @@ export function MessagesTab({
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="عنوان الرسالة"
-          className="h-9 w-full max-w-sm rounded-lg border border-border bg-background px-3 text-xs"
+          className="h-9 w-full max-w-sm rounded-md border border-input bg-transparent px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <textarea
           value={body}
@@ -279,20 +279,20 @@ export function MessagesTab({
           maxLength={250}
           rows={3}
           placeholder="نص الرسالة (حتى 250 حرف)..."
-          className="w-full rounded-lg border border-border bg-background p-3 text-xs"
+          className="w-full rounded-md border border-input bg-transparent p-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => void addMessage('welcome')}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-emerald-600 px-3.5 text-xs font-semibold text-white hover:bg-emerald-500 cursor-pointer"
           >
             <Check className="size-3.5" /> إضافة إلى رسائل الترحيب
           </button>
           <button
             type="button"
             onClick={() => void addMessage('daily')}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-gradient-gold px-3.5 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer"
           >
             <Check className="size-3.5" /> إضافة إلى الرسائل اليومية
           </button>
@@ -488,7 +488,7 @@ export function FrontTab({
             type="text"
             value={form.siteName}
             onChange={(e) => setForm({ ...form, siteName: e.target.value })}
-            className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
         <div className="space-y-1">
@@ -497,7 +497,7 @@ export function FrontTab({
             type="text"
             value={form.heroTitle}
             onChange={(e) => setForm({ ...form, heroTitle: e.target.value })}
-            className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
         <div className="space-y-1">
@@ -506,7 +506,7 @@ export function FrontTab({
             type="text"
             value={form.heroSubtitle}
             onChange={(e) => setForm({ ...form, heroSubtitle: e.target.value })}
-            className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
         <div className="space-y-1">
@@ -515,7 +515,7 @@ export function FrontTab({
             type="text"
             value={form.announcement}
             onChange={(e) => setForm({ ...form, announcement: e.target.value })}
-            className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
         <div className="flex flex-wrap gap-4 pt-1">
@@ -541,7 +541,7 @@ export function FrontTab({
         <div className="pt-2">
           <button
             type="submit"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-gold px-5 py-2 text-xs font-bold text-primary-foreground"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-gradient-gold px-5 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer"
           >
             <Save className="size-3.5" /> حفظ الواجهة
           </button>
@@ -595,7 +595,7 @@ export function SymbolsTab({
           value={glyph}
           onChange={(e) => setGlyph(e.target.value)}
           placeholder="الرمز (مثال: 🦅)"
-          className="h-9 w-28 rounded-lg border border-border bg-background px-3 text-sm"
+          className="h-9 w-28 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <input
           type="text"
@@ -603,18 +603,18 @@ export function SymbolsTab({
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder="الوصف"
-          className="h-9 w-44 rounded-lg border border-border bg-background px-3 text-xs"
+          className="h-9 w-44 rounded-md border border-input bg-transparent px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <input
           type="text"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           placeholder="الكود (:falcon:)"
-          className="h-9 w-36 rounded-lg border border-border bg-background px-3 text-xs font-mono"
+          className="h-9 w-36 rounded-md border border-input bg-transparent px-3 text-xs font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <button
           type="submit"
-          className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground"
+          className="inline-flex h-9 items-center gap-1 rounded-md bg-gradient-gold px-4 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer"
         >
           <Sparkles className="size-3.5" /> إضافة رمز
         </button>
@@ -697,12 +697,12 @@ export function DomainsTab({
           value={domain}
           onChange={(e) => setDomain(e.target.value)}
           placeholder="example.com"
-          className="h-9 w-52 rounded-lg border border-border bg-background px-3 text-xs font-mono"
+          className="h-9 w-52 rounded-md border border-input bg-transparent px-3 text-xs font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <select
           value={role}
           onChange={(e) => setRole(e.target.value as DomainConfig['role'])}
-          className="h-9 rounded-lg border border-border bg-background px-3 text-xs"
+          className="h-9 rounded-md border border-input bg-surface px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="primary">النطاق الرئيسي</option>
           <option value="mic_server">خادم المايك الصوتي</option>
@@ -714,11 +714,11 @@ export function DomainsTab({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="ملاحظات"
-          className="h-9 flex-1 min-w-[160px] rounded-lg border border-border bg-background px-3 text-xs"
+          className="h-9 flex-1 min-w-[160px] rounded-md border border-input bg-transparent px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <button
           type="submit"
-          className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground"
+          className="inline-flex h-9 items-center gap-1 rounded-md bg-gradient-gold px-4 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer"
         >
           <Plus className="size-3.5" /> إضافة
         </button>
@@ -832,7 +832,7 @@ export function SiteSettingsTab({
         <button
           type="submit"
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-gold px-5 py-2 text-xs font-bold text-primary-foreground"
+          className="inline-flex h-9 items-center gap-1.5 rounded-md bg-gradient-gold px-5 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer disabled:opacity-50"
         >
           <Save className="size-4" /> حفظ الإعدادات
         </button>
@@ -863,6 +863,7 @@ export function SiteSettingsTab({
           {numField('roomWriteMinLikes', 'عدد لايكات الكتابة في الغرف')}
           {numField('roomMediaMinLikes', 'عدد لايكات إرسال وسائط في الغرف')}
           {numField('micMinLikes', 'عدد لايكات الصعود على المايك')}
+          {numField('alertMinLikes', 'عدد لايكات إرسال تنبيه')}
         </div>
 
         <div className="rounded-xl border border-border bg-surface p-4 space-y-2.5">
@@ -966,7 +967,7 @@ export function SiteSettingsTab({
         <button
           type="submit"
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-gold px-6 py-2.5 text-sm font-bold text-primary-foreground"
+          className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-gradient-gold px-6 text-sm font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer disabled:opacity-50"
         >
           <Save className="size-4" /> حفظ جميع إعدادات الموقع
         </button>

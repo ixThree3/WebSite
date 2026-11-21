@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Check, Copy, Lock, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
 import { apiFetch, copyText, countryToFlagEmoji } from '../../lib/device.ts';
 import { readImageFileAsDataUrl } from '../../lib/imageUpload.ts';
+import { expandScientificIntegerString } from '../../shared/likesFormat.ts';
 import type { AccessLogEntry, RankRole, Room, UserAccount } from '../../shared/types.ts';
 
 export function InspectFingerprintModal({
@@ -26,17 +27,17 @@ export function InspectFingerprintModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-5 shadow-2xl space-y-4">
+      <div className="w-full max-w-lg rounded-lg border border-border bg-gradient-panel p-6 shadow-panel space-y-4 animate-in fade-in zoom-in-95">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <h3 className="font-display text-xl text-primary">فحص البصمة والسجل</h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground"
+            className="rounded-sm p-1 text-muted-foreground opacity-70 hover:opacity-100 hover:text-foreground cursor-pointer transition-opacity"
           >
             <X className="size-4" />
           </button>
@@ -121,7 +122,7 @@ export function EditUserModal({
 }) {
   const [username, setUsername] = useState(user?.username ?? '');
   const [topic, setTopic] = useState(user?.topic ?? '');
-  const [likes, setLikes] = useState(String(user?.likes ?? 0));
+  const [likes, setLikes] = useState(expandScientificIntegerString(user?.likes ?? 0));
   const [rankId, setRankId] = useState(user?.rankId ?? 'rank_member');
   const [subDays, setSubDays] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -167,13 +168,13 @@ export function EditUserModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
       role="dialog"
       aria-modal="true"
     >
       <form
         onSubmit={handleSave}
-        className="w-full max-w-lg rounded-2xl border border-border bg-surface p-5 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto scrollbar-thin"
+        className="w-full max-w-lg rounded-lg border border-border bg-gradient-panel p-6 shadow-panel space-y-4 max-h-[90dvh] overflow-y-auto scrollbar-thin animate-in fade-in zoom-in-95"
       >
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
@@ -183,7 +184,7 @@ export function EditUserModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground"
+            className="rounded-sm p-1 text-muted-foreground opacity-70 hover:opacity-100 hover:text-foreground cursor-pointer transition-opacity"
           >
             <X className="size-4" />
           </button>
@@ -196,7 +197,7 @@ export function EditUserModal({
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
           <div className="space-y-1">
@@ -205,17 +206,17 @@ export function EditUserModal({
               type="text"
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">عدد اللايكات</label>
             <input
-              type="number"
-              min={0}
+              type="text"
+              inputMode="numeric"
               value={likes}
-              onChange={(e) => setLikes(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm tabular-nums"
+              onChange={(e) => setLikes(e.target.value.replace(/[^\d]/g, ''))}
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm tabular-nums focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
           <div className="space-y-1">
@@ -223,7 +224,7 @@ export function EditUserModal({
             <select
               value={rankId}
               onChange={(e) => setRankId(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              className="h-9 w-full rounded-md border border-input bg-surface px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               {ranks.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -240,7 +241,7 @@ export function EditUserModal({
               value={subDays}
               onChange={(e) => setSubDays(e.target.value)}
               placeholder="مفتوح إذا ترك فارغاً"
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm tabular-nums"
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm tabular-nums focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
           <div className="space-y-1">
@@ -250,7 +251,7 @@ export function EditUserModal({
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="اتركه فارغاً للإبقاء"
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
         </div>
@@ -290,14 +291,14 @@ export function EditUserModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-border px-4 py-2 text-xs font-medium"
+            className="h-9 rounded-md border border-border bg-surface-raised/70 px-4 text-xs font-medium hover:bg-accent cursor-pointer transition-colors"
           >
             إلغاء
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="rounded-xl bg-gradient-gold px-5 py-2 text-xs font-bold text-primary-foreground"
+            className="h-9 rounded-md bg-gradient-gold px-5 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer disabled:opacity-50"
           >
             {busy ? 'جاري الحفظ...' : 'حفظ التغييرات'}
           </button>
@@ -413,14 +414,14 @@ export function RoomEditorModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
       role="dialog"
       aria-modal="true"
       data-testid="room-editor-modal"
     >
       <form
         onSubmit={handleSave}
-        className="w-full max-w-lg rounded-2xl border border-border bg-surface p-5 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto scrollbar-thin"
+        className="w-full max-w-lg rounded-lg border border-border bg-gradient-panel p-6 shadow-panel space-y-4 max-h-[90dvh] overflow-y-auto scrollbar-thin animate-in fade-in zoom-in-95"
       >
         <div className="flex items-center justify-between border-b border-border pb-3">
           <h3 className="font-display text-xl">
@@ -429,7 +430,7 @@ export function RoomEditorModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground"
+            className="rounded-sm p-1 text-muted-foreground opacity-70 hover:opacity-100 hover:text-foreground cursor-pointer transition-opacity"
           >
             <X className="size-4" />
           </button>
@@ -477,7 +478,7 @@ export function RoomEditorModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="عنوان الغرفة"
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
           <div className="space-y-1 sm:col-span-2">
@@ -487,7 +488,7 @@ export function RoomEditorModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="الوصف"
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
           <div className="space-y-1 sm:col-span-2">
@@ -497,7 +498,7 @@ export function RoomEditorModal({
               value={welcomeMessage}
               onChange={(e) => setWelcomeMessage(e.target.value)}
               placeholder="رسالة الترحيب"
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
           <div className="space-y-1">
@@ -507,7 +508,7 @@ export function RoomEditorModal({
               min={0}
               value={requiredLikes}
               onChange={(e) => setRequiredLikes(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm tabular-nums"
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm tabular-nums focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
           <div className="space-y-1">
@@ -519,7 +520,7 @@ export function RoomEditorModal({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="اختياري"
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
           <div className="space-y-1">
@@ -530,7 +531,7 @@ export function RoomEditorModal({
               max={200}
               value={maxCapacity}
               onChange={(e) => setMaxCapacity(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm tabular-nums"
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm tabular-nums focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
           <div className="space-y-1">
@@ -541,7 +542,7 @@ export function RoomEditorModal({
               max={5}
               value={maxMics}
               onChange={(e) => setMaxMics(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm tabular-nums"
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm tabular-nums focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
         </div>
@@ -594,14 +595,14 @@ export function RoomEditorModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-border px-4 py-2 text-xs font-medium"
+              className="h-9 rounded-md border border-border bg-surface-raised/70 px-4 text-xs font-medium hover:bg-accent cursor-pointer transition-colors"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={busy}
-              className="rounded-xl bg-gradient-gold px-5 py-2 text-xs font-bold text-primary-foreground"
+              className="h-9 rounded-md bg-gradient-gold px-5 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer disabled:opacity-50"
             >
               {isNew ? 'إنشاء الغرفة' : 'حفظ التعديلات'}
             </button>

@@ -80,10 +80,10 @@ export function EmojiPickerButton({
         aria-label="إيموجيات آيفون"
         title="إيموجيات آيفون"
         data-action="emoji-picker"
-        className={`flex size-10 shrink-0 items-center justify-center rounded-xl border text-lg leading-none transition ${
+        className={`flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-md border text-lg leading-none transition cursor-pointer ${
           open
-            ? 'border-primary bg-primary/20 shadow-sm'
-            : 'border-border bg-background/70 hover:border-primary/60'
+            ? 'border-primary bg-accent text-primary'
+            : 'border-border bg-surface-raised/70 hover:bg-accent'
         }`}
       >
         <span aria-hidden="true">😊</span>
@@ -91,20 +91,20 @@ export function EmojiPickerButton({
 
       {open && (
         <div
-          className={`absolute bottom-12 z-50 w-72 sm:w-80 rounded-2xl border border-border bg-surface shadow-2xl p-2.5 space-y-2 ${
+          className={`absolute bottom-11 z-50 w-72 sm:w-80 rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md space-y-2 animate-in fade-in zoom-in-95 ${
             align === 'end' ? 'end-0' : 'start-0'
           }`}
         >
-          <div className="flex items-center justify-between gap-1 border-b border-border/70 pb-2">
+          <div className="grid grid-cols-4 gap-1 rounded-lg bg-muted p-1 text-muted-foreground">
             {IPHONE_EMOJI_CATEGORIES.map((cat) => (
               <button
                 key={cat.id}
                 type="button"
                 onClick={() => setActiveCat(cat.id)}
-                className={`flex-1 rounded-lg px-2 py-1 text-[11px] font-semibold transition whitespace-nowrap ${
+                className={`rounded-md px-2 py-1 text-[11px] font-medium transition whitespace-nowrap cursor-pointer ${
                   activeCat === cat.id
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-surface-raised hover:text-foreground'
+                    ? 'bg-background text-foreground shadow'
+                    : 'hover:text-foreground'
                 }`}
               >
                 {cat.label}
@@ -118,7 +118,7 @@ export function EmojiPickerButton({
                 key={`${current.id}-${idx}-${em}`}
                 type="button"
                 onClick={() => onSelect(em)}
-                className="flex aspect-square items-center justify-center rounded-lg text-xl hover:bg-surface-raised active:scale-90 transition"
+                className="flex aspect-square items-center justify-center rounded-sm text-xl hover:bg-accent active:scale-90 transition cursor-pointer"
               >
                 {em}
               </button>

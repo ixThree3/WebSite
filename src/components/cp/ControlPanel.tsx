@@ -110,7 +110,7 @@ export function ControlPanel() {
         <button
           type="button"
           onClick={() => setViewMode('rooms')}
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-gold px-5 py-2.5 text-sm font-bold text-primary-foreground"
+          className="inline-flex h-11 items-center gap-2 rounded-lg bg-gradient-gold px-6 text-sm font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer transition"
         >
           <ArrowRight className="size-4" /> العودة للرومات والدردشة
         </button>
@@ -137,7 +137,7 @@ export function ControlPanel() {
             type="button"
             onClick={() => void loadData()}
             title="تحديث البيانات"
-            className="rounded-lg border border-border bg-surface-raised p-2 text-muted-foreground hover:text-primary transition"
+            className="rounded-md border border-border bg-surface-raised/70 p-2 text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer transition-colors"
           >
             <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -152,10 +152,10 @@ export function ControlPanel() {
                 key={item.id}
                 type="button"
                 onClick={() => setActiveTab(item.id)}
-                className={`flex shrink-0 items-center gap-2.5 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium transition whitespace-nowrap ${
+                className={`flex shrink-0 items-center gap-2.5 rounded-md px-3 py-2 text-xs sm:text-sm font-medium cursor-pointer transition-colors whitespace-nowrap ${
                   active
-                    ? 'bg-primary text-primary-foreground font-semibold'
-                    : 'text-muted-foreground hover:bg-surface-raised hover:text-foreground'
+                    ? 'bg-accent text-foreground font-semibold'
+                    : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
                 }`}
               >
                 <Icon className="size-4 shrink-0" />
@@ -169,7 +169,7 @@ export function ControlPanel() {
       {/* Main Content Area */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background/50">
         {/* Top Bar Contract: Breadcrumb + Back to Chat Action */}
-        <div className="flex items-center justify-between border-b border-border bg-surface/60 px-4 py-2.5">
+        <div className="flex items-center justify-between border-b border-border bg-surface/90 backdrop-blur px-4 py-2.5">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>لوحة التحكم</span>
             <span>/</span>
@@ -178,7 +178,7 @@ export function ControlPanel() {
           <button
             type="button"
             onClick={() => setViewMode('rooms')}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-xs font-medium hover:border-primary transition whitespace-nowrap shrink-0"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface-raised/70 px-3 text-xs font-medium text-foreground hover:bg-accent cursor-pointer transition-colors whitespace-nowrap shrink-0"
           >
             <ArrowRight className="size-3.5" /> العودة للدردشة
           </button>

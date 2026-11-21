@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   DoorOpen,
   Image as ImageIcon,
@@ -7,12 +7,13 @@ import {
   Send,
   Smile,
   Trash2,
+  Video,
   X,
 } from 'lucide-react';
-import { readImageFileAsDataUrl } from '../lib/imageUpload.ts';
+import { uploadChatMediaFile } from '../lib/imageUpload.ts';
 import { useChat } from '../lib/useChatClient.tsx';
-import { hasPermission } from '../shared/permissions.ts';
-import type { ChatMessage } from '../shared/types.ts';
+import { canDeleteOwnedItem, inferMediaKind } from '../shared/presenceStatus.ts';
+import type { ChatMessage, MediaKind } from '../shared/types.ts';
 import { MicCircleStage } from './MicCircleStage.tsx';
 import { EmojiPickerButton } from './EmojiPickerButton.tsx';
 import { RichMessageText } from './RichMessageText.tsx';
@@ -31,11 +32,12 @@ export function RoomChatView() {
     sendRoomMessage,
     deleteRoomMessage,
     openMemberProfile,
+    openImageLightbox,
     notify,
   } = useChat();
 
   const [text, setText] = useState('');
-  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [pendingMedia, setPendingMedia] = useState<{ url: string; mediaType: MediaKind } | null>(null);
   const [imageBusy, setImageBusy] = useState(false);
   const [showSymbols, setShowSymbols] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; username: string; body: string } | null>(null);
@@ -43,9 +45,20 @@ export function RoomChatView() {
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
   const messages: ChatMessage[] = activeRoom ? messagesByRoom[activeRoom.id] ?? [] : [];
-  const canDeleteAnyMsg = hasPermission(myRank, 'delete_messages');
+
+  const scrollToBottom = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  };
+
+  useEffect(() => {
+    const raf = window.requestAnimationFrame(scrollToBottom);
+    return () => window.cancelAnimationFrame(raf);
+  }, [activeRoom?.id, messages.length]);
 
   async function handleImagePick(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -53,10 +66,10 @@ export function RoomChatView() {
     if (!file) return;
     setImageBusy(true);
     try {
-      const dataUrl = await readImageFileAsDataUrl(file, 1024, 0.82);
-      setPendingImage(dataUrl);
+      const uploaded = await uploadChatMediaFile(file);
+      setPendingMedia(uploaded);
     } catch (err) {
-      notify(err instanceof Error ? err.message : 'تعذر تحميل الصورة من الجهاز', 'error');
+      notify(err instanceof Error ? err.message : 'تعذر تحميل الملف من الجهاز', 'error');
     } finally {
       setImageBusy(false);
     }
@@ -64,18 +77,26 @@ export function RoomChatView() {
 
   async function handleSend(e: FormEvent) {
     e.preventDefault();
-    if (!activeRoom || (!text.trim() && !pendingImage)) return;
+    if (!activeRoom || (!text.trim() && !pendingMedia)) return;
+    const draftText = text;
+    const draftMedia = pendingMedia;
+    const draftReply = replyTo;
+    setText('');
+    setPendingMedia(null);
+    setReplyTo(null);
+    setShowSymbols(false);
     setSending(true);
     try {
-      await sendRoomMessage(activeRoom.id, text, {
-        mediaUrl: pendingImage || undefined,
-        replyTo,
+      await sendRoomMessage(activeRoom.id, draftText, {
+        mediaUrl: draftMedia?.url || undefined,
+        mediaType: draftMedia?.mediaType || undefined,
+        replyTo: draftReply,
       });
-      setText('');
-      setPendingImage(null);
-      setReplyTo(null);
-      setShowSymbols(false);
+      window.requestAnimationFrame(scrollToBottom);
     } catch (err) {
+      setText((prev) => prev || draftText);
+      if (draftMedia) setPendingMedia(draftMedia);
+      if (draftReply) setReplyTo(draftReply);
       notify(err instanceof Error ? err.message : 'تعذر إرسال الرسالة', 'error');
     } finally {
       setSending(false);
@@ -83,16 +104,20 @@ export function RoomChatView() {
   }
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-[1400px] p-2 sm:p-3 min-h-0">
+    <div className="mx-auto flex h-full w-full max-w-6xl p-2 sm:p-4 min-h-0">
       {/* Center Focus Stage: Mic Circle first, followed directly by Chat Stream */}
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg">
+      <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel">
         {activeRoom ? (
           <>
-            {/* Majlis Mic Circle — First Element at Top */}
+            {/* Majlis Mic Circle */}
             <MicCircleStage room={activeRoom} />
 
-            {/* Chat Stream (Full badges: rank icon, verification, streak flame) */}
-            <div className="flex-1 overflow-y-auto px-3 py-3 sm:px-4 space-y-2.5 scrollbar-thin">
+            {/* Chat Stream */}
+            <div
+              ref={messagesContainerRef}
+              data-testid="room-chat-stream"
+              className="flex-1 overflow-y-auto px-3 py-3 sm:px-4 space-y-2 scrollbar-thin"
+            >
               {messages.map((m) => {
                 if (m.isSystem) {
                   const isLogin = m.systemKind === 'login';
@@ -101,15 +126,15 @@ export function RoomChatView() {
                     <div
                       key={m.id}
                       data-system-notice={m.systemKind || 'generic'}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-background/55 px-3 py-1.5 text-xs"
+                      className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-surface-raised/50 px-3 py-1.5 text-xs"
                     >
                       <div className="flex min-w-0 flex-wrap items-center gap-1.5 leading-relaxed">
                         {isLogin ? (
-                          <LogIn className="size-3.5 shrink-0 text-emerald-400" />
+                          <LogIn className="size-3.5 shrink-0 text-success" />
                         ) : (
                           <DoorOpen
                             className={`size-3.5 shrink-0 ${
-                              isLeave ? 'text-amber-400' : 'text-primary'
+                              isLeave ? 'text-warning' : 'text-primary'
                             }`}
                           />
                         )}
@@ -143,16 +168,23 @@ export function RoomChatView() {
                 }
 
                 const rank = ranks.find((r) => r.id === m.rankId);
-                const canDel = m.userId === me?.id || canDeleteAnyMsg;
+                const canDel = canDeleteOwnedItem({
+                  actorId: me?.id,
+                  ownerId: m.userId,
+                  actorRank: myRank,
+                  allowSiteOwner: true,
+                });
+                const mediaKind = m.mediaUrl ? inferMediaKind(m.mediaUrl, m.mediaType) : null;
                 return (
                   <div
                     key={m.id}
-                    className="group flex items-start gap-2.5 rounded-xl px-2.5 py-2 hover:bg-surface-raised/60 transition"
+                    data-room-message={m.id}
+                    className="group flex items-start gap-2.5 rounded-lg px-2.5 py-2 hover:bg-accent/40 transition"
                   >
                     <button
                       type="button"
                       onClick={() => openMemberProfile(m.userId)}
-                      className="shrink-0 mt-0.5"
+                      className="shrink-0 mt-0.5 cursor-pointer"
                     >
                       <UserAvatar
                         user={{
@@ -169,7 +201,7 @@ export function RoomChatView() {
                         <button
                           type="button"
                           onClick={() => openMemberProfile(m.userId)}
-                          className="text-start hover:underline"
+                          className="text-start hover:underline cursor-pointer"
                         >
                           <UserDisplayName
                             user={{
@@ -192,16 +224,18 @@ export function RoomChatView() {
                             minute: '2-digit',
                           })}
                         </time>
-                        <div className="ms-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+                        <div className="ms-auto flex shrink-0 items-center gap-1">
                           {siteSettings.roomReplyEnabled && (
                             <button
                               type="button"
+                              data-action="room-reply"
+                              aria-label="رد"
                               title="رد"
                               onClick={() => {
                                 setReplyTo({ id: m.id, username: m.username, body: m.body });
                                 inputRef.current?.focus();
                               }}
-                              className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
+                              className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer"
                             >
                               <Reply className="size-3.5" />
                             </button>
@@ -209,9 +243,11 @@ export function RoomChatView() {
                           {canDel && (
                             <button
                               type="button"
+                              data-action="room-delete"
+                              aria-label="حذف الرسالة"
                               title="حذف الرسالة"
                               onClick={() => void deleteRoomMessage(activeRoom.id, m.id)}
-                              className="rounded p-1 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+                              className="rounded-md p-1 text-muted-foreground hover:bg-destructive/15 hover:text-destructive cursor-pointer"
                             >
                               <Trash2 className="size-3.5" />
                             </button>
@@ -220,24 +256,42 @@ export function RoomChatView() {
                       </div>
 
                       {m.replyTo && (
-                        <div className="mt-1 rounded-lg border-s-2 border-primary/60 bg-background/50 px-2.5 py-1 text-xs text-muted-foreground">
+                        <div className="mt-1 rounded-md border-s-2 border-primary/60 bg-background/50 px-2.5 py-1 text-xs text-muted-foreground">
                           <span className="font-semibold text-primary">{m.replyTo.username}: </span>
                           <span className="line-clamp-1">{m.replyTo.body}</span>
                         </div>
                       )}
 
                       {m.body.trim().length > 0 && (
-                        <p className="mt-0.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/95">
+                        <p className="mt-0.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
                           <RichMessageText text={m.body} />
                         </p>
                       )}
 
-                      {m.mediaUrl && (
-                        <img
+                      {m.mediaUrl && mediaKind === 'video' && (
+                        <video
                           src={m.mediaUrl}
-                          alt="وسائط"
-                          className="mt-2 max-h-56 rounded-xl border border-border object-contain bg-background"
+                          controls
+                          playsInline
+                          preload="metadata"
+                          data-testid="room-message-video"
+                          className="mt-2 max-h-64 w-auto max-w-full rounded-lg border border-border bg-black"
                         />
+                      )}
+
+                      {m.mediaUrl && mediaKind === 'image' && (
+                        <button
+                          type="button"
+                          onClick={() => openImageLightbox(m.mediaUrl!, m.topic || m.username)}
+                          aria-label="تكبير الصورة"
+                          className="mt-2 block overflow-hidden rounded-lg border border-border bg-background cursor-zoom-in transition hover:brightness-105"
+                        >
+                          <img
+                            src={m.mediaUrl}
+                            alt="وسائط"
+                            className="max-h-56 w-auto max-w-full object-contain"
+                          />
+                        </button>
                       )}
                     </div>
                   </div>
@@ -252,7 +306,7 @@ export function RoomChatView() {
 
             {/* Reply / Media / Symbols Popovers */}
             {replyTo && (
-              <div className="flex items-center justify-between border-t border-border bg-background/70 px-3.5 py-1.5 text-xs">
+              <div className="flex items-center justify-between border-t border-border bg-surface-raised/60 px-3.5 py-1.5 text-xs">
                 <div className="truncate">
                   <span className="text-primary font-semibold">رد على {replyTo.username}: </span>
                   <span className="text-muted-foreground">{replyTo.body}</span>
@@ -260,36 +314,52 @@ export function RoomChatView() {
                 <button
                   type="button"
                   onClick={() => setReplyTo(null)}
-                  className="p-1 text-muted-foreground hover:text-foreground"
+                  className="p-1 text-muted-foreground hover:text-foreground cursor-pointer"
                 >
                   <X className="size-3.5" />
                 </button>
               </div>
             )}
 
-            {pendingImage && !siteSettings.hideRoomMedia && (
+            {pendingMedia && !siteSettings.hideRoomMedia && (
               <div
                 data-testid="room-image-preview"
-                className="flex items-center justify-between gap-3 border-t border-border bg-background/70 px-3.5 py-2"
+                className="flex items-center justify-between gap-3 border-t border-border bg-surface-raised/60 px-3.5 py-2"
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <img
-                    src={pendingImage}
-                    alt="معاينة الصورة المرفوعة"
-                    className="size-12 shrink-0 rounded-lg border border-border object-cover bg-surface"
-                  />
+                  {pendingMedia.mediaType === 'video' ? (
+                    <video
+                      src={pendingMedia.url}
+                      muted
+                      playsInline
+                      className="size-12 shrink-0 rounded-md border border-border object-cover bg-black"
+                    />
+                  ) : (
+                    <img
+                      src={pendingMedia.url}
+                      alt="معاينة الملف المرفوع"
+                      className="size-12 shrink-0 rounded-md border border-border object-cover bg-surface"
+                    />
+                  )}
                   <div className="min-w-0 text-xs">
-                    <p className="font-semibold text-foreground">صورة جاهزة للإرسال</p>
+                    <p className="flex items-center gap-1 font-semibold text-foreground">
+                      {pendingMedia.mediaType === 'video' && <Video className="size-3.5 text-primary" />}
+                      <span>
+                        {pendingMedia.mediaType === 'video'
+                          ? 'فيديو جاهز للإرسال'
+                          : 'صورة جاهزة للإرسال'}
+                      </span>
+                    </p>
                     <p className="text-[11px] text-muted-foreground">
-                      يمكنك إضافة نص مع الصورة أو إرسالها مباشرة
+                      يمكنك إضافة نص مع المرفق أو إرساله مباشرة
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  aria-label="إزالة الصورة المحددة"
-                  onClick={() => setPendingImage(null)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-destructive/40 bg-destructive/15 px-2.5 py-1 text-xs font-semibold text-destructive hover:bg-destructive/25 transition"
+                  aria-label="إزالة الملف المحدد"
+                  onClick={() => setPendingMedia(null)}
+                  className="inline-flex items-center gap-1 rounded-md border border-destructive/40 bg-destructive/15 px-2.5 py-1 text-xs font-semibold text-destructive hover:bg-destructive/25 transition cursor-pointer"
                 >
                   <X className="size-3.5" />
                   إزالة
@@ -298,7 +368,7 @@ export function RoomChatView() {
             )}
 
             {showSymbols && (
-              <div className="border-t border-border bg-background/85 px-3 py-2.5 space-y-2">
+              <div className="border-t border-border bg-popover px-3 py-2.5 space-y-2">
                 <div className="flex flex-wrap gap-1.5">
                   {symbols.map((s) => (
                     <button
@@ -306,7 +376,7 @@ export function RoomChatView() {
                       type="button"
                       onClick={() => setText((prev) => `${prev}${prev ? ' ' : ''}${s.glyph}`)}
                       title={s.label}
-                      className="rounded-lg border border-border bg-surface px-2.5 py-1 text-sm hover:border-primary transition"
+                      className="rounded-md border border-border bg-surface px-2.5 py-1 text-sm hover:border-primary hover:bg-accent transition cursor-pointer"
                     >
                       {s.glyph}
                     </button>
@@ -320,7 +390,7 @@ export function RoomChatView() {
                         key={sc.id}
                         type="button"
                         onClick={() => setText((prev) => `${prev}${prev ? ' ' : ''}${sc.trigger}`)}
-                        className="rounded bg-surface-raised px-2 py-0.5 text-primary border border-border hover:border-primary"
+                        className="rounded-md bg-surface-raised px-2 py-0.5 text-primary border border-border hover:border-primary cursor-pointer"
                       >
                         {sc.trigger}
                       </button>
@@ -333,7 +403,7 @@ export function RoomChatView() {
             {/* Composer */}
             <form
               onSubmit={handleSend}
-              className="flex items-center gap-1.5 sm:gap-2 border-t border-border bg-surface-raised/60 p-2.5"
+              className="flex items-center gap-1.5 sm:gap-2 border-t border-border bg-surface-raised/50 p-2.5"
             >
               <EmojiPickerButton
                 align="start"
@@ -348,10 +418,10 @@ export function RoomChatView() {
                 onClick={() => setShowSymbols((v) => !v)}
                 aria-label="الرموز والاختصارات"
                 title="الزخارف والاختصارات"
-                className={`flex size-10 shrink-0 items-center justify-center rounded-xl border border-border transition ${
+                className={`flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-md border transition cursor-pointer ${
                   showSymbols
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-background/70 text-muted-foreground hover:text-foreground'
+                    ? 'border-primary bg-accent text-primary'
+                    : 'border-border bg-surface-raised/70 text-muted-foreground hover:bg-accent hover:text-foreground'
                 }`}
               >
                 <Smile className="size-4" />
@@ -362,7 +432,7 @@ export function RoomChatView() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,video/*"
                     data-testid="room-image-upload-input"
                     onChange={(e) => void handleImagePick(e)}
                     className="hidden"
@@ -371,12 +441,12 @@ export function RoomChatView() {
                     type="button"
                     disabled={imageBusy}
                     onClick={() => fileInputRef.current?.click()}
-                    aria-label="رفع صورة من الجهاز"
-                    title="رفع صورة من الجهاز"
-                    className={`flex size-10 shrink-0 items-center justify-center rounded-xl border border-border transition disabled:opacity-50 ${
-                      pendingImage
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-background/70 text-muted-foreground hover:text-foreground'
+                    aria-label="رفع صورة أو فيديو من الجهاز"
+                    title="رفع صورة أو فيديو (حتى 30MB)"
+                    className={`flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-md border transition disabled:opacity-50 cursor-pointer ${
+                      pendingMedia
+                        ? 'border-primary bg-accent text-primary'
+                        : 'border-border bg-surface-raised/70 text-muted-foreground hover:bg-accent hover:text-foreground'
                     }`}
                   >
                     <ImageIcon className="size-4" />
@@ -398,14 +468,14 @@ export function RoomChatView() {
                 disabled={Boolean(
                   me?.silencedUntil && me.silencedUntil > Date.now() && !myRank?.isOwner
                 )}
-                className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-background/80 px-3.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
+                className="h-9 sm:h-10 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
               />
 
               <button
                 type="submit"
-                disabled={sending || imageBusy || (!text.trim() && !pendingImage)}
+                disabled={sending || imageBusy || (!text.trim() && !pendingMedia)}
                 aria-label="إرسال"
-                className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-gradient-gold px-4 text-sm font-bold text-primary-foreground transition hover:brightness-105 disabled:opacity-50"
+                className="inline-flex h-9 sm:h-10 shrink-0 items-center gap-1.5 rounded-md bg-gradient-gold px-4 text-sm font-semibold text-primary-foreground shadow-gold transition hover:brightness-110 disabled:opacity-50 cursor-pointer"
               >
                 <Send className="size-4 -scale-x-100" />
                 <span className="hidden sm:inline">إرسال</span>

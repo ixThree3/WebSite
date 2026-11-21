@@ -64,7 +64,6 @@ export function MicCircleStage({ room }: { room: Room }) {
     };
   }, [popover]);
 
-  // Close popover if occupant leaves the seat
   useEffect(() => {
     if (!popover) return;
     const seat = room.seats.find((s) => s.seat === popover.seatNum);
@@ -75,7 +74,7 @@ export function MicCircleStage({ room }: { room: Room }) {
 
   if (!room.micEnabled || room.seats.length === 0) {
     return (
-      <div className="border-b border-border bg-surface-raised/40 px-4 py-2.5 text-center text-xs text-muted-foreground">
+      <div className="border-b border-border bg-surface/90 px-4 py-2.5 text-center text-xs text-muted-foreground">
         <span className="font-semibold text-foreground" data-testid="mic-stage-room-name">
           {room.name}
         </span>
@@ -101,7 +100,6 @@ export function MicCircleStage({ room }: { room: Room }) {
       return;
     }
 
-    // Toggle popover anchored near the clicked avatar
     if (popover && popover.seatNum === seatNum && popover.occupantId === occupant.id) {
       setPopover(null);
       return;
@@ -157,9 +155,9 @@ export function MicCircleStage({ room }: { room: Room }) {
   return (
     <div
       data-testid="mic-circle-stage"
-      className="relative border-b border-border bg-surface-raised/45 px-3 py-3 sm:px-5"
+      className="relative border-b border-border bg-surface/90 px-3 py-3 sm:px-5"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           <Mic className="size-3.5 shrink-0 text-primary" />
           <span
@@ -174,14 +172,17 @@ export function MicCircleStage({ room }: { room: Room }) {
         </div>
       </div>
 
+      {/* Preserve outer RTL horizontal scroll container so seat 1 never clips on narrow viewports */}
       <div className="w-full overflow-x-auto scrollbar-thin">
-        <ul className="mx-auto flex w-max min-w-full items-start justify-center gap-1.5 sm:gap-6 pt-3 pb-2 px-1 sm:px-2">
+        <ul className="mx-auto flex w-max min-w-full items-start justify-center gap-3 sm:gap-6 pt-2 pb-1.5 px-1 sm:px-2">
           {room.seats.map((seat) => {
             const occupant = seat.userId
               ? onlineUsers.find((u) => u.id === seat.userId) ?? null
               : null;
             const isMine = occupant?.id === me?.id;
-            const isGloballyMuted = Boolean(occupant && (seat.forceMuted || occupant.micForceMuted));
+            const isGloballyMuted = Boolean(
+              occupant && (seat.forceMuted || occupant.micForceMuted)
+            );
             const isLocallyMuted = Boolean(
               occupant && !isMine && locallyMutedUserIds.has(occupant.id)
             );
@@ -200,132 +201,132 @@ export function MicCircleStage({ room }: { room: Room }) {
               <li
                 key={seat.seat}
                 data-mic-seat={seat.seat}
-                className="flex w-[60px] sm:w-24 shrink-0 flex-col items-center gap-1.5"
+                className="flex w-16 shrink-0 flex-col items-center gap-1.5 sm:w-20"
               >
-              <div className="relative">
-                <button
-                  type="button"
-                  disabled={micBusy}
-                  data-mic-avatar={seat.seat}
-                  data-speaking={isSpeaking ? 'true' : 'false'}
-                  aria-expanded={occupant ? isPopoverOpen : undefined}
-                  aria-haspopup={occupant ? 'menu' : undefined}
-                  onClick={(e) => void handleSeatClick(e, seat.seat, occupant)}
-                  aria-label={
-                    occupant
-                      ? `خيارات مايك ${seat.seat}: ${occupant.username}`
-                      : `اصعد على مايك ${seat.seat}`
-                  }
-                  className={`relative flex size-12 sm:size-15 items-center justify-center rounded-full transition outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                    occupant
-                      ? 'bg-surface'
-                      : 'border-2 border-dashed border-primary/45 bg-background/60 text-primary hover:border-primary hover:bg-accent'
-                  } ${
-                    isSpeaking
-                      ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-surface animate-speak'
-                      : isPopoverOpen
-                      ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface'
-                      : isGloballyMuted
-                      ? 'ring-2 ring-destructive/80 ring-offset-2 ring-offset-surface'
-                      : isLocallyMuted
-                      ? 'ring-2 ring-amber-400/80 ring-offset-2 ring-offset-surface'
-                      : ''
-                  }`}
-                >
-                  {occupant ? (
-                    <span className="flex size-full items-center justify-center overflow-hidden rounded-full border border-border bg-surface-raised">
-                      <UserAvatar
-                        user={occupant}
-                        size="full"
-                        fit="cover-top"
-                        className="border-0 text-sm sm:text-lg"
-                      />
-                    </span>
-                  ) : (
-                    <span className="flex flex-col items-center">
-                      <Mic className="size-4 sm:size-5" />
-                      <Plus className="size-2.5 sm:size-3 -mt-0.5" />
-                    </span>
-                  )}
+                <div className="relative">
+                  <button
+                    type="button"
+                    disabled={micBusy}
+                    data-mic-avatar={seat.seat}
+                    data-speaking={isSpeaking ? 'true' : 'false'}
+                    aria-expanded={occupant ? isPopoverOpen : undefined}
+                    aria-haspopup={occupant ? 'menu' : undefined}
+                    onClick={(e) => void handleSeatClick(e, seat.seat, occupant)}
+                    aria-label={
+                      occupant
+                        ? `مايك ${seat.seat}: ${occupant.username}`
+                        : `اصعد على مايك ${seat.seat}`
+                    }
+                    className={`relative flex size-14 items-center justify-center rounded-full transition sm:size-16 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      occupant
+                        ? 'cursor-pointer'
+                        : 'border-2 border-dashed border-primary/50 bg-surface-raised text-primary hover:border-primary hover:bg-accent cursor-pointer'
+                    } ${
+                      isSpeaking
+                        ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface animate-speak'
+                        : isGloballyMuted
+                        ? 'ring-2 ring-destructive ring-offset-2 ring-offset-surface'
+                        : isLocallyMuted
+                        ? 'ring-2 ring-warning ring-offset-2 ring-offset-surface'
+                        : isMine || isPopoverOpen
+                        ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface'
+                        : ''
+                    }`}
+                  >
+                    {occupant ? (
+                      <span className="flex size-full items-center justify-center overflow-hidden rounded-full bg-surface-raised">
+                        <UserAvatar
+                          user={occupant}
+                          size="full"
+                          fit="cover-top"
+                          className="text-xl"
+                        />
+                      </span>
+                    ) : (
+                      <span className="flex flex-col items-center">
+                        <Mic className="size-5" />
+                        <Plus className="absolute bottom-1 size-3" />
+                      </span>
+                    )}
 
-                  {occupant && isGloballyMuted && (
-                    <span
-                      title="مكتوم عام إدارياً"
-                      data-mute-badge="global"
-                      className="absolute -bottom-1 -end-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground border border-surface shadow-sm"
-                    >
-                      <Lock className="size-2.5" />
-                    </span>
-                  )}
-                  {occupant && !isGloballyMuted && isLocallyMuted && (
-                    <span
-                      title="مكتوم شخصياً لديك"
-                      data-mute-badge="local"
-                      className="absolute -bottom-1 -end-1 flex size-5 items-center justify-center rounded-full bg-amber-500 text-slate-950 border border-surface shadow-sm"
-                    >
-                      <VolumeX className="size-3" />
-                    </span>
-                  )}
-                  {occupant && !isGloballyMuted && !isLocallyMuted && seat.muted && (
-                    <span
-                      title="المايك مكتوم"
-                      data-mute-badge="self"
-                      className="absolute -bottom-1 -end-1 flex size-5 items-center justify-center rounded-full bg-destructive/90 text-destructive-foreground border border-surface"
-                    >
-                      <MicOff className="size-3" />
-                    </span>
-                  )}
-                  {occupant && !isGloballyMuted && !isLocallyMuted && !seat.muted && (
-                    <span
-                      title="المايك مفتوح"
-                      className="absolute -bottom-1 -end-1 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground border border-surface"
-                    >
-                      <Mic className="size-3" />
-                    </span>
-                  )}
-                </button>
-              </div>
-
-              {/* Clean, harmonious username ONLY — zero streak, verification, gift, or rank badges */}
-              {occupant ? (
-                <div className="w-full px-0.5 text-center leading-tight">
-                  <UserDisplayName
-                    user={occupant}
-                    plain
-                    className="max-w-full justify-center text-xs leading-snug"
-                  />
-                  {isGloballyMuted && (
-                    <span className="mt-0.5 block text-[10px] font-medium text-destructive">
-                      مكتوم عام
-                    </span>
-                  )}
-                  {!isGloballyMuted && isLocallyMuted && (
-                    <span className="mt-0.5 block text-[10px] font-medium text-amber-400">
-                      مكتوم لديك
-                    </span>
-                  )}
+                    {occupant && isGloballyMuted && (
+                      <span
+                        title="مكتوم عام إدارياً"
+                        data-mute-badge="global"
+                        className="absolute -bottom-1 -end-1 flex size-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+                      >
+                        <Lock className="size-3.5" />
+                      </span>
+                    )}
+                    {occupant && !isGloballyMuted && isLocallyMuted && (
+                      <span
+                        title="مكتوم شخصياً لديك"
+                        data-mute-badge="local"
+                        className="absolute -bottom-1 -end-1 flex size-6 items-center justify-center rounded-full bg-warning text-primary-foreground"
+                      >
+                        <VolumeX className="size-3.5" />
+                      </span>
+                    )}
+                    {occupant && !isGloballyMuted && !isLocallyMuted && seat.muted && (
+                      <span
+                        title="المايك مكتوم"
+                        data-mute-badge="self"
+                        className="absolute -bottom-1 -end-1 flex size-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+                      >
+                        <MicOff className="size-3.5" />
+                      </span>
+                    )}
+                    {occupant && !isGloballyMuted && !isLocallyMuted && !seat.muted && (
+                      <span
+                        title="المايك مفتوح"
+                        className="absolute -bottom-1 -end-1 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground"
+                      >
+                        <Mic className="size-3.5" />
+                      </span>
+                    )}
+                  </button>
                 </div>
-              ) : (
-                <span className="w-full truncate text-center text-xs text-muted-foreground">
-                  مايك {seat.seat}
-                </span>
-              )}
-            </li>
-          );
-        })}
+
+                {/* Username directly under seat (clean, matching MicSeats.tsx) */}
+                {occupant ? (
+                  <div className="w-full text-center leading-tight">
+                    <UserDisplayName
+                      user={occupant}
+                      plain
+                      className="max-w-full justify-center text-xs text-foreground"
+                    />
+                    {isGloballyMuted && (
+                      <span className="mt-0.5 block text-[10px] font-medium text-destructive">
+                        مكتوم عام
+                      </span>
+                    )}
+                    {!isGloballyMuted && isLocallyMuted && (
+                      <span className="mt-0.5 block text-[10px] font-medium text-warning">
+                        مكتوم لديك
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="w-full truncate text-center text-xs text-muted-foreground">
+                    مايك {seat.seat}
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </div>
 
-      {/* Avatar-triggered Mic Action Popover (Fixed positioning prevents clipping) */}
+      {/* Avatar-triggered Mic Action Popover */}
       {popover && activeSeat && activeOccupant && (
         <div
           ref={popoverRef}
           role="menu"
           data-testid="mic-action-popover"
           style={{ top: `${popover.top}px`, left: `${popover.left}px` }}
-          className="fixed z-50 w-[248px] rounded-2xl border border-border bg-surface p-2 shadow-2xl space-y-1 animate-in fade-in zoom-in-95 duration-150"
+          className="fixed z-50 w-[248px] rounded-md border border-border bg-popover p-1.5 text-popover-foreground shadow-md space-y-1 animate-in fade-in zoom-in-95"
         >
-          <div className="flex items-center gap-2.5 border-b border-border/70 px-2.5 py-2 mb-1">
+          <div className="flex items-center gap-2.5 border-b border-border/70 px-2 py-2 mb-1">
             <UserAvatar user={activeOccupant} size="sm" />
             <div className="min-w-0 flex-1">
               <UserDisplayName user={activeOccupant} plain className="text-xs font-bold" />
@@ -343,7 +344,6 @@ export function MicCircleStage({ room }: { room: Room }) {
 
           {!isPopoverMine ? (
             <>
-              {/* Personal Local Mute (Available to everyone) */}
               <button
                 type="button"
                 role="menuitem"
@@ -352,24 +352,23 @@ export function MicCircleStage({ room }: { room: Room }) {
                   toggleLocalMute(activeOccupant.id, activeOccupant.topic || activeOccupant.username);
                   setPopover(null);
                 }}
-                className={`flex min-h-[40px] w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                className={`flex min-h-[38px] w-full items-center justify-between gap-2 rounded-sm px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
                   isActiveLocallyMuted
-                    ? 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
-                    : 'text-foreground hover:bg-surface-raised'
+                    ? 'bg-accent text-foreground'
+                    : 'text-foreground hover:bg-accent hover:text-accent-foreground'
                 }`}
               >
                 <span className="inline-flex items-center gap-2">
                   {isActiveLocallyMuted ? (
-                    <Volume2 className="size-4 text-amber-400 shrink-0" />
+                    <Volume2 className="size-4 text-warning shrink-0" />
                   ) : (
-                    <VolumeX className="size-4 text-amber-400 shrink-0" />
+                    <VolumeX className="size-4 text-warning shrink-0" />
                   )}
                   <span>{isActiveLocallyMuted ? 'إلغاء الكتم الشخصي' : 'كتم شخصي'}</span>
                 </span>
                 <span className="text-[10px] font-normal text-muted-foreground">لك فقط</span>
               </button>
 
-              {/* Global Administrative Mic Mute (Persistent across all seats & rooms, staff only) */}
               {canModerateActive && (
                 <button
                   type="button"
@@ -383,17 +382,13 @@ export function MicCircleStage({ room }: { room: Room }) {
                       notify(err instanceof Error ? err.message : 'تعذر تنفيذ الكتم العام', 'error');
                     }
                   }}
-                  className={`flex min-h-[40px] w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                    isActiveGloballyMuted
-                      ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
-                      : 'text-rose-300 hover:bg-rose-500/15'
-                  }`}
+                  className="flex min-h-[38px] w-full items-center justify-between gap-2 rounded-sm px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-accent hover:text-accent-foreground transition cursor-pointer"
                 >
                   <span className="inline-flex items-center gap-2">
                     {isActiveGloballyMuted ? (
-                      <Mic className="size-4 text-emerald-400 shrink-0" />
+                      <Mic className="size-4 text-success shrink-0" />
                     ) : (
-                      <MicOff className="size-4 text-rose-400 shrink-0" />
+                      <MicOff className="size-4 text-destructive shrink-0" />
                     )}
                     <span>{isActiveGloballyMuted ? 'فك الكتم العام' : 'كتم عام للمايك'}</span>
                   </span>
@@ -401,7 +396,6 @@ export function MicCircleStage({ room }: { room: Room }) {
                 </button>
               )}
 
-              {/* Kick from Mic (Staff only) */}
               {canModerateActive && (
                 <button
                   type="button"
@@ -415,7 +409,7 @@ export function MicCircleStage({ room }: { room: Room }) {
                       notify(err instanceof Error ? err.message : 'تعذر الإنزال من المايك', 'error');
                     }
                   }}
-                  className="flex min-h-[40px] w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-destructive hover:bg-destructive/15 transition"
+                  className="flex min-h-[38px] w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs font-semibold text-destructive hover:bg-accent transition cursor-pointer"
                 >
                   <UserX className="size-4 shrink-0" />
                   <span>إنزال من المايك</span>
@@ -436,7 +430,7 @@ export function MicCircleStage({ room }: { room: Room }) {
                     notify(err instanceof Error ? err.message : 'تعذر تغيير حالة المايك', 'error');
                   }
                 }}
-                className="flex min-h-[40px] w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-foreground hover:bg-surface-raised transition disabled:opacity-50"
+                className="flex min-h-[38px] w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-accent hover:text-accent-foreground transition disabled:opacity-50 cursor-pointer"
               >
                 {activeSeat.muted ? (
                   <Mic className="size-4 text-primary shrink-0" />
@@ -459,7 +453,7 @@ export function MicCircleStage({ room }: { room: Room }) {
                   await leaveMic(room.id);
                   setPopover(null);
                 }}
-                className="flex min-h-[40px] w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-destructive hover:bg-destructive/15 transition"
+                className="flex min-h-[38px] w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs font-semibold text-destructive hover:bg-accent transition cursor-pointer"
               >
                 <LogOut className="size-4 shrink-0" />
                 <span>نزول من المايك</span>
@@ -467,22 +461,21 @@ export function MicCircleStage({ room }: { room: Room }) {
             </>
           )}
 
-          <div className="border-t border-border/70 pt-1">
-            <button
-              type="button"
-              role="menuitem"
-              data-mic-action="view-profile"
-              onClick={() => {
-                const targetId = activeOccupant.id;
-                setPopover(null);
-                openMemberProfile(targetId);
-              }}
-              className="flex min-h-[40px] w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/10 transition"
-            >
-              <User className="size-4 shrink-0" />
-              <span>عرض البروفايل</span>
-            </button>
-          </div>
+          <div className="-mx-1 my-1 h-px bg-muted" />
+          <button
+            type="button"
+            role="menuitem"
+            data-mic-action="view-profile"
+            onClick={() => {
+              const targetId = activeOccupant.id;
+              setPopover(null);
+              openMemberProfile(targetId);
+            }}
+            className="flex min-h-[38px] w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-accent transition cursor-pointer"
+          >
+            <User className="size-4 shrink-0" />
+            <span>عرض البروفايل</span>
+          </button>
         </div>
       )}
     </div>

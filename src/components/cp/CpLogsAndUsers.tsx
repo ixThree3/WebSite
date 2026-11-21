@@ -10,6 +10,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { apiFetch, copyText, countryToFlagEmoji } from '../../lib/device.ts';
+import { formatExactNumberString } from '../../shared/likesFormat.ts';
 import { formatRelativeArabic, type PurgeRangeKey } from '../../shared/permissions.ts';
 import type {
   AccessLogEntry,
@@ -80,7 +81,7 @@ export function LogsTableTab({
               type="button"
               disabled={page === 0}
               onClick={() => setPage((p) => Math.max(0, p - 1))}
-              className="inline-flex h-9 items-center gap-1 rounded-lg border border-border bg-surface px-2.5 text-xs tabular-nums disabled:opacity-40"
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-border bg-surface px-2.5 text-xs tabular-nums hover:bg-accent cursor-pointer disabled:opacity-40"
             >
               <ChevronRight className="size-3.5" />
               {page * pageSize}
@@ -89,7 +90,7 @@ export function LogsTableTab({
               type="button"
               disabled={(page + 1) * pageSize >= filtered.length}
               onClick={() => setPage((p) => p + 1)}
-              className="inline-flex h-9 items-center gap-1 rounded-lg border border-border bg-surface px-2.5 text-xs tabular-nums disabled:opacity-40"
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-border bg-surface px-2.5 text-xs tabular-nums hover:bg-accent cursor-pointer disabled:opacity-40"
             >
               {(page + 1) * pageSize}
               <ChevronLeft className="size-3.5" />
@@ -105,7 +106,7 @@ export function LogsTableTab({
                 setPage(0);
               }}
               placeholder="البحث..."
-              className="h-9 w-full rounded-lg border border-border bg-surface pe-3 ps-8 text-xs focus:border-primary focus:outline-none"
+              className="h-9 w-full rounded-md border border-input bg-surface pe-3 ps-8 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
         </div>
@@ -244,7 +245,7 @@ export function StatesTab({ states }: { states: ActionStateLog[] }) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="البحث في الحالات..."
-            className="h-9 w-full rounded-lg border border-border bg-surface pe-3 ps-8 text-xs focus:border-primary focus:outline-none"
+            className="h-9 w-full rounded-md border border-input bg-surface pe-3 ps-8 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
       </div>
@@ -354,7 +355,7 @@ export function UsersTab({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="البحث في الأعضاء..."
-            className="h-9 w-full rounded-lg border border-border bg-surface pe-3 ps-8 text-xs focus:border-primary focus:outline-none"
+            className="h-9 w-full rounded-md border border-input bg-surface pe-3 ps-8 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
       </div>
@@ -443,7 +444,7 @@ export function UsersTab({
                   <td className="px-3 py-2.5 font-semibold" style={{ color: rank?.color }}>
                     {rank?.name ?? 'عضو'}
                   </td>
-                  <td className="px-3 py-2.5 tabular-nums">{u.likes.toLocaleString('en-US')}</td>
+                  <td className="px-3 py-2.5 tabular-nums">{formatExactNumberString(u.likes)}</td>
                   <td className="px-3 py-2.5">
                     <RelativeTimeBadge ts={u.lastSeen} />
                   </td>

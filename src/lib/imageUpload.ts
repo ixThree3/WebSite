@@ -1,4 +1,13 @@
-const MAX_RAW_BYTES = 8 * 1024 * 1024; // 8 MB input limit
+import {
+  buildDeviceFingerprint,
+  getOrCreateDeviceToken,
+  getStoredSessionToken,
+} from './device.ts';
+import {
+  MAX_IMAGE_UPLOAD_BYTES,
+  validateUploadMedia,
+} from '../shared/presenceStatus.ts';
+import type { MediaKind } from '../shared/types.ts';
 
 /**
  * Reads an image selected from the user's device and compresses large raster
@@ -12,8 +21,8 @@ export async function readImageFileAsDataUrl(
   if (!file.type.startsWith('image/')) {
     throw new Error('الرجاء اختيار ملف صورة صالح فقط');
   }
-  if (file.size > MAX_RAW_BYTES) {
-    throw new Error('حجم الصورة كبير جداً (الحد الأقصى 8 ميجابايت)');
+  if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+    throw new Error('حجم الصورة كبير جداً (الحد الأقصى 10 ميجابايت)');
   }
 
   const rawDataUrl = await new Promise<string>((resolve, reject) => {
@@ -60,4 +69,51 @@ export async function readImageFileAsDataUrl(
     img.onerror = () => resolve(rawDataUrl);
     img.src = rawDataUrl;
   });
+}
+
+/**
+ * Validates and uploads either an image or a video (max 30MB).
+ * Videos are streamed directly to `/api/media/upload` so large MP4/WebM files stay fast.
+ */
+export async function uploadChatMediaFile(
+  file: File
+): Promise<{ url: string; mediaType: MediaKind }> {
+  const check = validateUploadMedia({
+    type: file.type,
+    size: file.size,
+    name: file.name,
+  });
+  if (!check.ok) {
+    throw new Error(check.error);
+  }
+
+  if (check.kind === 'image') {
+    const dataUrl = await readImageFileAsDataUrl(file, 1024, 0.82);
+    return { url: dataUrl, mediaType: 'image' };
+  }
+
+  const headers = new Headers();
+  headers.set('Content-Type', file.type || 'video/mp4');
+  headers.set('x-file-name', encodeURIComponent(file.name || 'video.mp4'));
+  const sessionToken = getStoredSessionToken();
+  if (sessionToken) {
+    headers.set('x-session-token', sessionToken);
+  }
+  headers.set('x-device-token', getOrCreateDeviceToken());
+  headers.set('x-device-fp', buildDeviceFingerprint());
+
+  const res = await fetch('/api/media/upload', {
+    method: 'POST',
+    headers,
+    body: file,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    url?: string;
+    mediaType?: MediaKind;
+    error?: string;
+  };
+  if (!res.ok || !data.url) {
+    throw new Error(data.error || 'تعذر رفع ملف الفيديو');
+  }
+  return { url: data.url, mediaType: data.mediaType ?? 'video' };
 }

@@ -31,10 +31,24 @@ import {
   canStaffModerateMic,
   toggleGlobalAdminMicMute,
 } from './src/shared/micRules.ts';
+import {
+  computeReloginRoomCutoff,
+  filterMessagesSinceCutoff,
+  validateAlertMessage,
+} from './src/shared/chatHistory.ts';
+import {
+  canDeleteOwnedItem,
+  checkPrivacyMessagePermission,
+  inferMediaKind,
+  MAX_VIDEO_UPLOAD_BYTES,
+  sortMembersByRankDesc,
+} from './src/shared/presenceStatus.ts';
+import { formatExactNumberString } from './src/shared/likesFormat.ts';
 import { createDefaultSeats } from './src/shared/defaults.ts';
 import type {
   AccessLogEntry,
   ActionStateLog,
+  ActivityStatus,
   BanRecord,
   ChatMessage,
   CpPayload,
@@ -279,7 +293,96 @@ function requireCpAccess(perm?: PermissionKey) {
   };
 }
 
+const UPLOADS_DIR = path.resolve(process.cwd(), '.data', 'uploads');
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
 const app = express();
+app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' }));
+
+function resolveUploadExt(mime: string, originalName: string): string {
+  const lowerMime = mime.toLowerCase();
+  if (lowerMime.includes('mp4')) return '.mp4';
+  if (lowerMime.includes('webm')) return '.webm';
+  if (lowerMime.includes('quicktime') || lowerMime.includes('mov')) return '.mov';
+  if (lowerMime.includes('ogg')) return '.ogv';
+  if (lowerMime.includes('png')) return '.png';
+  if (lowerMime.includes('jpeg') || lowerMime.includes('jpg')) return '.jpg';
+  if (lowerMime.includes('gif')) return '.gif';
+  if (lowerMime.includes('webp')) return '.webp';
+  const extMatch = path.extname(originalName).toLowerCase();
+  if (/^\.(mp4|webm|mov|m4v|ogv|png|jpg|jpeg|gif|webp)$/.test(extMatch)) {
+    return extMatch;
+  }
+  return lowerMime.startsWith('video/') ? '.mp4' : '.bin';
+}
+
+app.post(
+  '/api/media/upload',
+  requireAuth,
+  (req: AuthedRequest, res, next) => {
+    const contentLen = Number(req.headers['content-length'] ?? 0);
+    if (contentLen > MAX_VIDEO_UPLOAD_BYTES) {
+      res.status(413).json({
+        error: 'حجم الفيديو أكبر من 30 ميغابايت (30MB) ولا يمكن رفعه',
+      });
+      return;
+    }
+    next();
+  },
+  express.raw({ type: '*/*', limit: MAX_VIDEO_UPLOAD_BYTES }),
+  (req: AuthedRequest, res) => {
+    const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (buf.length === 0) {
+      res.status(400).json({ error: 'الملف المرفوع فارغ' });
+      return;
+    }
+    if (buf.length > MAX_VIDEO_UPLOAD_BYTES) {
+      res.status(413).json({
+        error: 'حجم الفيديو أكبر من 30 ميغابايت (30MB) ولا يمكن رفعه',
+      });
+      return;
+    }
+    const contentType = String(req.headers['content-type'] ?? '').toLowerCase();
+    const rawName = decodeURIComponent(String(req.headers['x-file-name'] ?? 'upload'));
+    const isVideo =
+      contentType.startsWith('video/') ||
+      /\.(mp4|webm|mov|m4v|ogv)$/i.test(rawName);
+    const isImage =
+      contentType.startsWith('image/') ||
+      /\.(png|jpe?g|gif|webp|avif)$/i.test(rawName);
+
+    if (!isVideo && !isImage) {
+      res.status(400).json({ error: 'نوع الملف غير مدعوم — يسمح بالصور ومقاطع الفيديو فقط' });
+      return;
+    }
+
+    const ext = resolveUploadExt(contentType, rawName);
+    const filename = `media_${Date.now()}_${crypto.randomUUID().slice(0, 8)}${ext}`;
+    const fullPath = path.join(UPLOADS_DIR, filename);
+    fs.writeFileSync(fullPath, buf);
+    res.json({
+      url: `/uploads/${filename}`,
+      mediaType: isVideo ? 'video' : 'image',
+      size: buf.length,
+    });
+  }
+);
+
+app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if (
+    err &&
+    typeof err === 'object' &&
+    'type' in err &&
+    (err as { type?: string }).type === 'entity.too.large'
+  ) {
+    res.status(413).json({
+      error: 'حجم الفيديو أكبر من 30 ميغابايت (30MB) ولا يمكن رفعه',
+    });
+    return;
+  }
+  next(err);
+});
+
 app.use(express.json({ limit: '6mb' }));
 
 const server = http.createServer(app);
@@ -337,12 +440,21 @@ function broadcastRoom(roomId: string, event: string, payload: unknown) {
   }
 }
 
+function getSortedOnlinePublicUsers(): ReturnType<typeof toPublicUser>[] {
+  const list = state.users
+    .filter((u) => u.online && !u.stealth)
+    .map((u) => {
+      const onMic = state.rooms.some((r) => r.seats.some((s) => s.userId === u.id));
+      const pub = toPublicUser(u);
+      if (!u.manualActivityStatus && onMic) pub.activityStatus = 'busy';
+      return pub;
+    });
+  return sortMembersByRankDesc(list, state.ranks);
+}
+
 function emitLivePresenceAndRooms() {
   broadcastAll('rooms:update', state.rooms);
-  broadcastAll(
-    'presence:update',
-    state.users.filter((u) => u.online && !u.stealth).map(toPublicUser)
-  );
+  broadcastAll('presence:update', getSortedOnlinePublicUsers());
 }
 
 function emitCpUpdate() {
@@ -396,8 +508,8 @@ function pushSystemRoomNotice(params: {
   kind: 'login' | 'room_enter' | 'room_leave' | 'generic';
   body: string;
   targetRoomName?: string;
-}) {
-  if (!params.roomId || params.actor.stealth) return;
+}): ChatMessage | null {
+  if (!params.roomId || params.actor.stealth) return null;
   const msg: ChatMessage = {
     id: `sys_${crypto.randomUUID().slice(0, 8)}`,
     roomId: params.roomId,
@@ -423,6 +535,7 @@ function pushSystemRoomNotice(params: {
     state.messages = state.messages.slice(-400);
   }
   broadcastRoom(params.roomId, 'chat:message', msg);
+  return msg;
 }
 
 wss.on('connection', (ws, req) => {
@@ -454,6 +567,7 @@ wss.on('connection', (ws, req) => {
         targetUserId?: string;
         signal?: unknown;
         speaking?: boolean;
+        status?: ActivityStatus;
         token?: string;
       };
       const meta = wsClients.get(ws);
@@ -465,16 +579,39 @@ wss.on('connection', (ws, req) => {
         const u = uid ? state.users.find((x) => x.id === uid) : undefined;
         if (u) {
           u.online = true;
+          u.activityStatus = u.manualActivityStatus ?? u.activityStatus ?? 'online';
           u.lastSeen = Date.now();
           meta.roomId = u.roomId;
           emitLivePresenceAndRooms();
           sendSpeakingSync(ws, u.roomId);
         }
+      } else if (msg.event === 'presence:status' && meta.userId) {
+        const u = state.users.find((x) => x.id === meta.userId);
+        if (u) {
+          const nextStatus: ActivityStatus =
+            msg.status === 'idle' || msg.status === 'busy' || msg.status === 'online'
+              ? msg.status
+              : 'online';
+          const onMic = state.rooms.some((r) => r.seats.some((s) => s.userId === u.id));
+          const resolved: ActivityStatus =
+            u.manualActivityStatus ?? (onMic ? 'busy' : nextStatus);
+          const changed = !u.online || u.activityStatus !== resolved;
+          u.online = true;
+          u.activityStatus = resolved;
+          if (resolved !== 'idle') {
+            u.lastSeen = Date.now();
+          }
+          if (changed) {
+            emitLivePresenceAndRooms();
+          }
+        }
       } else if (msg.event === 'activity' && meta.userId) {
         const u = state.users.find((x) => x.id === meta.userId);
         if (u) {
-          const wasOffline = !u.online;
+          const wasOffline = !u.online || u.activityStatus === 'idle';
           u.online = true;
+          const onMic = state.rooms.some((r) => r.seats.some((s) => s.userId === u.id));
+          u.activityStatus = u.manualActivityStatus ?? (onMic ? 'busy' : 'online');
           u.lastSeen = Date.now();
           if (wasOffline) emitLivePresenceAndRooms();
         }
@@ -644,6 +781,17 @@ app.get('/api/bootstrap', async (req, res) => {
       )
     : [];
 
+  const pmPeerIds = new Set<string>();
+  if (user) {
+    for (const pm of privateMessages) {
+      if (pm.fromUserId !== user.id) pmPeerIds.add(pm.fromUserId);
+      if (pm.toUserId !== user.id) pmPeerIds.add(pm.toUserId);
+    }
+  }
+  const pmPeers = user
+    ? state.users.filter((u) => pmPeerIds.has(u.id)).map(toPublicUser)
+    : [];
+
   const notifications = user
     ? state.notifications.filter((n) => n.userId === user.id).slice(0, 50)
     : [];
@@ -655,13 +803,14 @@ app.get('/api/bootstrap', async (req, res) => {
     canAccessCp: canAccessControlPanel(rank),
     ranks: state.ranks,
     rooms: state.rooms,
-    onlineUsers: state.users.filter((u) => u.online && !u.stealth).map(toPublicUser),
+    onlineUsers: getSortedOnlinePublicUsers(),
     wallPosts: state.wallPosts,
     shortcuts: state.shortcuts,
     symbols: state.symbols,
     front: state.front,
     siteSettings: state.siteSettings,
     privateMessages,
+    pmPeers,
     notifications,
   });
 });
@@ -784,12 +933,17 @@ app.post('/api/auth/register', async (req, res) => {
   if (assignedRank.isOwner) {
     addStateLog('ترقية تلقائية للمالك (جهاز المطور)', 'النظام', newUser.username, 'المالك', ip);
   }
-  pushSystemRoomNotice({
+  const loginNotice = pushSystemRoomNotice({
     roomId: newUser.roomId || 'room_general',
     actor: newUser,
     kind: 'login',
     body: 'سجّل دخول إلى الموقع وانضم للغرفة',
   });
+  if (req.body?.cleanRoom === true) {
+    newUser.roomHistoryCutoff = computeReloginRoomCutoff({
+      lastNoticeCreatedAt: loginNotice?.createdAt,
+    });
+  }
   saveState(state);
 
   const token = crypto.randomUUID();
@@ -868,12 +1022,18 @@ app.post('/api/auth/login', async (req, res) => {
     device,
     referrer: String(req.headers.referer ?? '*'),
   });
-  pushSystemRoomNotice({
+  const loginNotice = pushSystemRoomNotice({
     roomId: user.roomId || 'room_general',
     actor: user,
     kind: 'login',
     body: 'سجّل دخول إلى الموقع وانضم للغرفة',
   });
+  if (user.roomHistoryCutoff || req.body?.cleanRoom === true) {
+    user.roomHistoryCutoff = computeReloginRoomCutoff({
+      previousCutoff: user.roomHistoryCutoff,
+      lastNoticeCreatedAt: loginNotice?.createdAt,
+    });
+  }
   saveState(state);
 
   const token = crypto.randomUUID();
@@ -942,12 +1102,18 @@ app.post('/api/auth/quick-login', async (req, res) => {
     device,
     referrer: String(req.headers.referer ?? '*'),
   });
-  pushSystemRoomNotice({
+  const loginNotice = pushSystemRoomNotice({
     roomId: user.roomId || 'room_general',
     actor: user,
     kind: 'login',
     body: 'سجّل دخول إلى الموقع وانضم للغرفة',
   });
+  if (user.roomHistoryCutoff || req.body?.cleanRoom === true) {
+    user.roomHistoryCutoff = computeReloginRoomCutoff({
+      previousCutoff: user.roomHistoryCutoff,
+      lastNoticeCreatedAt: loginNotice?.createdAt,
+    });
+  }
   saveState(state);
 
   const token = crypto.randomUUID();
@@ -1051,12 +1217,17 @@ app.post('/api/auth/guest', async (req, res) => {
     device,
     referrer: '*',
   });
-  pushSystemRoomNotice({
+  const guestNotice = pushSystemRoomNotice({
     roomId: guestUser.roomId || 'room_general',
     actor: guestUser,
     kind: 'login',
     body: 'دخل كزائر إلى الغرفة',
   });
+  if (req.body?.cleanRoom === true) {
+    guestUser.roomHistoryCutoff = computeReloginRoomCutoff({
+      lastNoticeCreatedAt: guestNotice?.createdAt,
+    });
+  }
   saveState(state);
 
   const token = crypto.randomUUID();
@@ -1077,8 +1248,10 @@ app.post('/api/auth/guest', async (req, res) => {
 app.post('/api/auth/logout', requireAuth, (req: AuthedRequest, res) => {
   const token = String(req.headers['x-session-token'] ?? '').trim();
   const user = req.user!;
+  const now = Date.now();
   user.online = false;
-  user.lastSeen = Date.now();
+  user.lastSeen = now;
+  user.roomHistoryCutoff = now;
   clearUserSpeakingAllRooms(user.id);
   for (const room of state.rooms) {
     for (const seat of room.seats) {
@@ -1166,6 +1339,41 @@ app.patch('/api/profile', requireAuth, (req: AuthedRequest, res) => {
   res.json({ user: toPublicUser(user) });
 });
 
+app.patch('/api/me/privacy', requireAuth, (req: AuthedRequest, res) => {
+  const user = req.user!;
+  const { activityStatus, lockPm, lockAlerts } = req.body ?? {};
+
+  if (activityStatus !== undefined) {
+    if (
+      activityStatus === 'online' ||
+      activityStatus === 'idle' ||
+      activityStatus === 'busy'
+    ) {
+      user.manualActivityStatus = activityStatus;
+      user.activityStatus = activityStatus;
+    } else if (activityStatus === null) {
+      user.manualActivityStatus = null;
+      const onMic = state.rooms.some((r) => r.seats.some((s) => s.userId === user.id));
+      user.activityStatus = onMic ? 'busy' : 'online';
+    } else {
+      res.status(400).json({ error: 'حالة النشاط غير صالحة' });
+      return;
+    }
+  }
+
+  if (typeof lockPm === 'boolean') {
+    user.lockPm = lockPm;
+  }
+  if (typeof lockAlerts === 'boolean') {
+    user.lockAlerts = lockAlerts;
+  }
+
+  user.lastSeen = Date.now();
+  saveState(state);
+  emitLivePresenceAndRooms();
+  res.json({ user: toPublicUser(user) });
+});
+
 app.get('/api/users/:id', requireAuth, (req: AuthedRequest, res) => {
   const target = state.users.find((u) => u.id === req.params.id);
   if (!target) {
@@ -1191,6 +1399,48 @@ app.post('/api/users/:id/like', requireAuth, (req: AuthedRequest, res) => {
   saveState(state);
   emitLivePresenceAndRooms();
   res.json({ user: toPublicUser(target) });
+});
+
+app.post('/api/users/:id/alert', requireAuth, (req: AuthedRequest, res) => {
+  const actor = req.user!;
+  const rank = req.userRank!;
+  const target = state.users.find((u) => u.id === req.params.id);
+  if (!target) {
+    res.status(404).json({ error: 'العضو غير موجود' });
+    return;
+  }
+  if (target.id === actor.id) {
+    res.status(400).json({ error: 'لا يمكنك إرسال تنبيه لنفسك' });
+    return;
+  }
+  const alertPrivacy = checkPrivacyMessagePermission(target, 'alert');
+  if (!alertPrivacy.allowed) {
+    res.status(403).json({ error: alertPrivacy.error, code: 'ALERTS_LOCKED' });
+    return;
+  }
+  if (actor.silencedUntil && actor.silencedUntil > Date.now()) {
+    res.status(403).json({ error: 'أنت مسكت حالياً ولا يمكنك إرسال تنبيهات' });
+    return;
+  }
+  if (!rank.isOwner && actor.likes < state.siteSettings.alertMinLikes) {
+    res.status(403).json({
+      error: `التنبيه يتطلب ${formatExactNumberString(state.siteSettings.alertMinLikes)} لايك`,
+    });
+    return;
+  }
+  const alertCheck = validateAlertMessage(String(req.body?.message ?? ''));
+  if (!alertCheck.ok) {
+    res.status(400).json({ error: alertCheck.error });
+    return;
+  }
+  pushNotification({
+    userId: target.id,
+    actor,
+    kind: 'alert',
+    postSnippet: alertCheck.text,
+  });
+  saveState(state);
+  res.json({ ok: true });
 });
 
 app.post('/api/notifications/read', requireAuth, (req: AuthedRequest, res) => {
@@ -1314,7 +1564,11 @@ app.post('/api/rooms/:id/join', requireAuth, (req: AuthedRequest, res) => {
   saveState(state);
   emitLivePresenceAndRooms();
 
-  const messages = state.messages.filter((m) => m.roomId === room.id).slice(-80);
+  const messages = filterMessagesSinceCutoff(
+    state.messages,
+    room.id,
+    user.roomHistoryCutoff
+  ).slice(-80);
   res.json({ room, messages });
 });
 
@@ -1324,7 +1578,11 @@ app.get('/api/rooms/:id/messages', requireAuth, (req: AuthedRequest, res) => {
     res.status(404).json({ error: 'الغرفة غير موجودة' });
     return;
   }
-  const messages = state.messages.filter((m) => m.roomId === room.id).slice(-100);
+  const messages = filterMessagesSinceCutoff(
+    state.messages,
+    room.id,
+    req.user?.roomHistoryCutoff
+  ).slice(-100);
   res.json({ messages });
 });
 
@@ -1349,7 +1607,21 @@ app.post('/api/rooms/:id/messages', requireAuth, (req: AuthedRequest, res) => {
   }
 
   const rawBody = String(req.body?.body ?? '').trim();
-  const mediaUrl = typeof req.body?.mediaUrl === 'string' ? req.body.mediaUrl.trim() : null;
+  const rawMedia = typeof req.body?.mediaUrl === 'string' ? req.body.mediaUrl.trim() : '';
+  const mediaUrl = rawMedia
+    ? rawMedia.startsWith('/uploads/')
+      ? rawMedia.slice(0, 300)
+      : rawMedia.slice(0, 1_500_000)
+    : null;
+  const mediaType = mediaUrl
+    ? inferMediaKind(
+        mediaUrl,
+        req.body?.mediaType === 'video' || req.body?.mediaType === 'image'
+          ? req.body.mediaType
+          : null
+      )
+    : null;
+
   if (!rawBody && !mediaUrl) {
     res.status(400).json({ error: 'الرسالة فارغة' });
     return;
@@ -1405,6 +1677,7 @@ app.post('/api/rooms/:id/messages', requireAuth, (req: AuthedRequest, res) => {
     streakLastDay: user.streakLastDay,
     body: processed.text,
     mediaUrl,
+    mediaType,
     replyTo: req.body?.replyTo ?? null,
     createdAt: Date.now(),
   };
@@ -1431,9 +1704,14 @@ app.delete('/api/rooms/:roomId/messages/:msgId', requireAuth, (req: AuthedReques
     return;
   }
   const msg = state.messages[idx]!;
-  const canDelete = msg.userId === user.id || hasPermission(rank, 'delete_messages');
+  const canDelete = canDeleteOwnedItem({
+    actorId: user.id,
+    ownerId: msg.userId,
+    actorRank: rank,
+    allowSiteOwner: true,
+  });
   if (!canDelete) {
-    res.status(403).json({ error: 'لا تملك صلاحية حذف هذه الرسالة' });
+    res.status(403).json({ error: 'يمكنك حذف رسائلك الخاصة فقط' });
     return;
   }
 
@@ -1489,9 +1767,15 @@ app.post('/api/rooms/:id/mic', requireAuth, (req: AuthedRequest, res) => {
       return;
     }
     applyMicJoinToSeat(room, user, seatNum, Date.now());
+    if (!user.manualActivityStatus) {
+      user.activityStatus = 'busy';
+    }
   } else if (action === 'leave') {
     applyMicLeaveFromRoom(room, user.id, seatNum || undefined);
     setUserSpeaking(room.id, user.id, false);
+    if (!user.manualActivityStatus) {
+      user.activityStatus = user.online ? 'online' : 'idle';
+    }
   } else if (action === 'toggle_mute' && seat && seat.userId === user.id) {
     const check = canSelfToggleMicMute(seat, user, rank);
     if (!check.allowed) {
@@ -1573,7 +1857,19 @@ app.post('/api/wall', requireAuth, (req: AuthedRequest, res) => {
   const rank = req.userRank!;
   const body = String(req.body?.body ?? '').trim();
   const rawMedia = typeof req.body?.mediaUrl === 'string' ? req.body.mediaUrl.trim() : '';
-  const mediaUrl = rawMedia ? rawMedia.slice(0, 1_200_000) : null;
+  const mediaUrl = rawMedia
+    ? rawMedia.startsWith('/uploads/')
+      ? rawMedia.slice(0, 300)
+      : rawMedia.slice(0, 1_500_000)
+    : null;
+  const mediaType = mediaUrl
+    ? inferMediaKind(
+        mediaUrl,
+        req.body?.mediaType === 'video' || req.body?.mediaType === 'image'
+          ? req.body.mediaType
+          : null
+      )
+    : null;
 
   if (!body && !mediaUrl) {
     res.status(400).json({ error: 'محتوى المنشور فارغ' });
@@ -1591,7 +1887,7 @@ app.post('/api/wall', requireAuth, (req: AuthedRequest, res) => {
   }
   if (mediaUrl && !rank.isOwner && user.likes < state.siteSettings.wallUploadMinLikes) {
     res.status(403).json({
-      error: `رفع الصور في الحائط يتطلب ${state.siteSettings.wallUploadMinLikes} لايك`,
+      error: `رفع الوسائط في الحائط يتطلب ${state.siteSettings.wallUploadMinLikes} لايك`,
     });
     return;
   }
@@ -1610,6 +1906,7 @@ app.post('/api/wall', requireAuth, (req: AuthedRequest, res) => {
     streakLastDay: user.streakLastDay,
     body,
     mediaUrl,
+    mediaType,
     likes: [],
     comments: [],
     createdAt: Date.now(),
@@ -1764,8 +2061,15 @@ app.delete('/api/wall/:id', requireAuth, (req: AuthedRequest, res) => {
     return;
   }
   const post = state.wallPosts[idx]!;
-  if (post.userId !== user.id && !hasPermission(rank, 'delete_messages')) {
-    res.status(403).json({ error: 'لا تملك صلاحية حذف المنشور' });
+  if (
+    !canDeleteOwnedItem({
+      actorId: user.id,
+      ownerId: post.userId,
+      actorRank: rank,
+      allowSiteOwner: true,
+    })
+  ) {
+    res.status(403).json({ error: 'يمكنك حذف منشوراتك الخاصة فقط' });
     return;
   }
   state.wallPosts.splice(idx, 1);
@@ -1776,15 +2080,74 @@ app.delete('/api/wall/:id', requireAuth, (req: AuthedRequest, res) => {
   res.json({ ok: true });
 });
 
+app.delete('/api/wall/:postId/comments/:commentId', requireAuth, (req: AuthedRequest, res) => {
+  const user = req.user!;
+  const rank = req.userRank!;
+  const post = state.wallPosts.find((p) => p.id === req.params.postId);
+  if (!post) {
+    res.status(404).json({ error: 'المنشور غير موجود' });
+    return;
+  }
+  const idx = post.comments.findIndex((c) => c.id === req.params.commentId);
+  if (idx === -1) {
+    res.status(404).json({ error: 'التعليق غير موجود' });
+    return;
+  }
+  const comment = post.comments[idx]!;
+  if (
+    !canDeleteOwnedItem({
+      actorId: user.id,
+      ownerId: comment.userId,
+      actorRank: rank,
+      allowSiteOwner: true,
+    })
+  ) {
+    res.status(403).json({ error: 'يمكنك حذف تعليقاتك وردودك الخاصة فقط' });
+    return;
+  }
+  post.comments.splice(idx, 1);
+  addStateLog('حذف تعليق حائط', user.username, comment.username, '', getClientIp(req));
+  saveState(state);
+  broadcastAll('wall:update', state.wallPosts);
+  emitCpUpdate();
+  res.json({ post });
+});
+
 app.post('/api/pm', requireAuth, (req: AuthedRequest, res) => {
   const user = req.user!;
   const rank = req.userRank!;
   const toUserId = String(req.body?.toUserId ?? '');
   const body = String(req.body?.body ?? '').trim();
+  const rawMedia = typeof req.body?.mediaUrl === 'string' ? req.body.mediaUrl.trim() : '';
+  const mediaUrl = rawMedia
+    ? rawMedia.startsWith('/uploads/')
+      ? rawMedia.slice(0, 300)
+      : rawMedia.slice(0, 1_500_000)
+    : null;
+  const mediaType = mediaUrl
+    ? inferMediaKind(
+        mediaUrl,
+        req.body?.mediaType === 'video' || req.body?.mediaType === 'image'
+          ? req.body.mediaType
+          : null
+      )
+    : null;
 
-  if (!toUserId || !body) {
+  if (!toUserId || (!body && !mediaUrl)) {
     res.status(400).json({ error: 'بيانات الرسالة الخاصة ناقصة' });
     return;
+  }
+  const targetUser = state.users.find((u) => u.id === toUserId);
+  if (!targetUser) {
+    res.status(404).json({ error: 'المستلم غير موجود' });
+    return;
+  }
+  if (targetUser.id !== user.id) {
+    const pmPrivacy = checkPrivacyMessagePermission(targetUser, 'pm');
+    if (!pmPrivacy.allowed) {
+      res.status(403).json({ error: pmPrivacy.error, code: 'PM_LOCKED' });
+      return;
+    }
   }
   if (body.length > state.siteSettings.pmMaxChars) {
     res.status(400).json({
@@ -1796,19 +2159,34 @@ app.post('/api/pm', requireAuth, (req: AuthedRequest, res) => {
     res.status(403).json({ error: `الخاص يتطلب ${state.siteSettings.pmMinLikes} لايك` });
     return;
   }
+  if (mediaUrl && !rank.isOwner && user.likes < state.siteSettings.pmFileMinLikes) {
+    res.status(403).json({
+      error: `إرسال الوسائط في الخاص يتطلب ${state.siteSettings.pmFileMinLikes} لايك`,
+    });
+    return;
+  }
 
   const pm: PrivateMessage = {
     id: `pm_${crypto.randomUUID().slice(0, 8)}`,
     fromUserId: user.id,
     toUserId,
     body,
+    mediaUrl,
+    mediaType,
     readAt: null,
     createdAt: Date.now(),
   };
   state.privateMessages.push(pm);
-  if (state.privateMessages.length > 500) {
-    state.privateMessages = state.privateMessages.slice(-500);
+  if (state.privateMessages.length > 5000) {
+    state.privateMessages = state.privateMessages.slice(-5000);
   }
+  pushNotification({
+    userId: toUserId,
+    actor: user,
+    kind: 'pm_message',
+    postId: pm.id,
+    postSnippet: body ? body.slice(0, 60) : mediaType === 'video' ? 'مقطع فيديو' : 'صورة',
+  });
   saveState(state);
 
   const packet = JSON.stringify({ event: 'pm:new', payload: pm });
@@ -1823,6 +2201,40 @@ app.post('/api/pm', requireAuth, (req: AuthedRequest, res) => {
   res.json({ pm });
 });
 
+app.delete('/api/pm/:id', requireAuth, (req: AuthedRequest, res) => {
+  const user = req.user!;
+  const rank = req.userRank!;
+  const idx = state.privateMessages.findIndex((p) => p.id === req.params.id);
+  if (idx === -1) {
+    res.status(404).json({ error: 'الرسالة الخاصة غير موجودة' });
+    return;
+  }
+  const pm = state.privateMessages[idx]!;
+  if (
+    !canDeleteOwnedItem({
+      actorId: user.id,
+      ownerId: pm.fromUserId,
+      actorRank: rank,
+      allowSiteOwner: false,
+    })
+  ) {
+    res.status(403).json({ error: 'يمكنك حذف رسائلك الخاصة التي أرسلتها فقط' });
+    return;
+  }
+  state.privateMessages.splice(idx, 1);
+  saveState(state);
+  const packet = JSON.stringify({ event: 'pm:delete', payload: { id: pm.id } });
+  for (const [ws, meta] of wsClients) {
+    if (
+      ws.readyState === WebSocket.OPEN &&
+      (meta.userId === pm.fromUserId || meta.userId === pm.toUserId)
+    ) {
+      ws.send(packet);
+    }
+  }
+  res.json({ ok: true });
+});
+
 app.post('/api/pm/read', requireAuth, (req: AuthedRequest, res) => {
   const user = req.user!;
   const fromUserId = String(req.body?.fromUserId ?? '');
@@ -1831,6 +2243,11 @@ app.post('/api/pm/read', requireAuth, (req: AuthedRequest, res) => {
     if (pm.fromUserId === fromUserId && pm.toUserId === user.id && pm.readAt === null) {
       pm.readAt = now;
     }
+  }
+  if (fromUserId) {
+    state.notifications = state.notifications.filter(
+      (n) => !(n.userId === user.id && n.kind === 'pm_message' && n.actorId === fromUserId)
+    );
   }
   saveState(state);
   res.json({ ok: true });
@@ -2096,10 +2513,15 @@ app.post('/api/cp/users/:id/update', requireCpAccess(), (req: AuthedRequest, res
     addStateLog('حذف صورة العضو', actor.username, target.username, 'البروفايل', getClientIp(req));
   }
   if (typeof likes === 'number' && Number.isFinite(likes) && likes >= 0) {
-    const diff = Math.floor(likes) - target.likes;
-    target.likes = Math.floor(likes);
+    const nextLikes = Math.floor(likes);
+    const diff = nextLikes - target.likes;
+    target.likes = nextLikes;
+    const diffLabel =
+      diff >= 0
+        ? `+${formatExactNumberString(diff)}`
+        : `-${formatExactNumberString(Math.abs(diff))}`;
     addStateLog(
-      `تعديل اعجابات [${diff >= 0 ? `+${diff}` : diff}]`,
+      `تعديل اعجابات [${diffLabel}]`,
       actor.username,
       target.username,
       'out room',

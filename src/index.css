@@ -1,19 +1,33 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * شات الخليج design system — "Gulf night": deep sea teal-navy, pearl text, lantern gold.
+ * All colors are oklch tokens aligned with majlis-mic-circle-main.
+ */
+
 @theme inline {
   --font-sans: "IBM Plex Sans Arabic", system-ui, sans-serif;
   --font-display: "Reem Kufi", "IBM Plex Sans Arabic", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
 
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-surface-raised: var(--surface-raised);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-glow: var(--primary-glow);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -27,30 +41,47 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-bubble-self: var(--bubble-self);
+  --color-bubble-self-foreground: var(--bubble-self-foreground);
 }
 
 :root {
-  --background: oklch(0.155 0.032 232);
-  --foreground: oklch(0.955 0.014 85);
-  --surface: oklch(0.195 0.036 228);
-  --surface-raised: oklch(0.24 0.04 224);
-  --card: oklch(0.2 0.036 228);
-  --card-foreground: oklch(0.955 0.014 85);
-  --primary: oklch(0.81 0.135 78);
-  --primary-foreground: oklch(0.18 0.035 60);
-  --secondary: oklch(0.265 0.042 220);
-  --secondary-foreground: oklch(0.92 0.018 190);
-  --muted: oklch(0.235 0.035 225);
-  --muted-foreground: oklch(0.73 0.025 215);
-  --accent: oklch(0.295 0.05 210);
-  --accent-foreground: oklch(0.96 0.015 85);
-  --destructive: oklch(0.62 0.21 25);
+  --radius: 0.875rem;
+  --background: oklch(0.16 0.035 232);
+  --foreground: oklch(0.95 0.015 85);
+  --surface: oklch(0.2 0.04 228);
+  --surface-raised: oklch(0.245 0.045 225);
+  --card: oklch(0.2 0.04 228);
+  --card-foreground: oklch(0.95 0.015 85);
+  --popover: oklch(0.22 0.042 226);
+  --popover-foreground: oklch(0.95 0.015 85);
+  --primary: oklch(0.8 0.135 78);
+  --primary-glow: oklch(0.88 0.12 88);
+  --primary-foreground: oklch(0.2 0.04 60);
+  --secondary: oklch(0.28 0.05 215);
+  --secondary-foreground: oklch(0.93 0.02 190);
+  --muted: oklch(0.25 0.04 225);
+  --muted-foreground: oklch(0.7 0.03 215);
+  --accent: oklch(0.32 0.06 200);
+  --accent-foreground: oklch(0.96 0.02 190);
+  --destructive: oklch(0.65 0.2 25);
   --destructive-foreground: oklch(0.98 0.01 25);
-  --success: oklch(0.73 0.16 155);
+  --success: oklch(0.75 0.16 155);
   --warning: oklch(0.79 0.15 70);
-  --border: oklch(0.31 0.036 222);
-  --input: oklch(0.27 0.038 224);
-  --ring: oklch(0.81 0.135 78);
+  --border: oklch(0.32 0.04 222);
+  --input: oklch(0.3 0.04 222);
+  --ring: oklch(0.8 0.135 78);
+  --bubble-self: oklch(0.34 0.07 200);
+  --bubble-self-foreground: oklch(0.97 0.015 190);
+
+  --gradient-gold: linear-gradient(135deg, var(--primary-glow), var(--primary) 55%, oklch(0.68 0.14 60));
+  --gradient-night: linear-gradient(180deg, oklch(0.16 0.035 232 / 0) 0%, oklch(0.16 0.035 232 / 0.75) 60%, var(--background) 100%);
+  --gradient-panel: linear-gradient(160deg, oklch(0.23 0.045 222), oklch(0.19 0.038 232));
+  --shadow-gold: 0 10px 40px -12px color-mix(in oklab, var(--primary) 55%, transparent);
+  --shadow-panel: 0 24px 60px -24px oklch(0.05 0.02 240 / 0.8);
 }
 
 @layer base {
@@ -68,52 +99,93 @@
   }
 }
 
-.font-display {
+@utility font-display {
   font-family: var(--font-display);
 }
 
-.font-mono-tabular {
+@utility font-mono-tabular {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-.tabular-nums {
+@utility tabular-nums {
   font-variant-numeric: tabular-nums;
 }
 
-.bg-gradient-gold {
-  background-image: linear-gradient(135deg, oklch(0.84 0.135 80), oklch(0.72 0.14 68));
+@utility bg-gradient-gold {
+  background-image: var(--gradient-gold);
 }
 
-.bg-gradient-night {
-  background-image: linear-gradient(
-    to bottom,
-    oklch(0.155 0.032 232 / 0.45) 0%,
-    oklch(0.155 0.032 232 / 0.88) 70%,
-    oklch(0.155 0.032 232) 100%
-  );
+@utility bg-gradient-night {
+  background-image: var(--gradient-night);
 }
 
-.bg-gradient-panel {
-  background-image: linear-gradient(160deg, oklch(0.22 0.04 226), oklch(0.185 0.034 232));
+@utility bg-gradient-panel {
+  background-image: var(--gradient-panel);
 }
 
-@keyframes speak-ring {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--success) 70%, transparent);
-  }
-  100% {
-    box-shadow: 0 0 0 11px color-mix(in oklab, var(--success) 0%, transparent);
-  }
+@utility shadow-gold {
+  box-shadow: var(--shadow-gold);
 }
 
-.animate-speak {
-  animation: speak-ring 1s ease-out infinite;
+@utility shadow-panel {
+  box-shadow: var(--shadow-panel);
 }
 
-.scrollbar-thin {
+@utility text-gradient-gold {
+  background-image: var(--gradient-gold);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility scrollbar-thin {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+}
+
+/* speaking ring around a mic seat */
+@keyframes speak-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 70%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 10px color-mix(in oklab, var(--primary) 0%, transparent);
+  }
+}
+
+@utility animate-speak {
+  animation: speak-pulse 0.9s ease-out infinite;
+}
+
+@keyframes float-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility animate-float-in {
+  animation: float-in 0.25s ease-out both;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-in.fade-in.zoom-in-95 {
+  animation: pop-in 0.15s ease-out both;
 }
 
 /* Telegram-inspired Name Patterns */
@@ -181,4 +253,3 @@
 .name-style-glow-soft {
   text-shadow: 0 0 10px color-mix(in srgb, var(--name-color, #eab308) 65%, transparent);
 }
-

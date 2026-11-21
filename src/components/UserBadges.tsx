@@ -5,6 +5,8 @@ import {
   Flame,
   Gem,
   Heart,
+  Minus,
+  Moon,
   Shield,
   Sparkles,
   Star,
@@ -13,7 +15,39 @@ import {
 } from 'lucide-react';
 import { type CSSProperties } from 'react';
 import { getStreakDisplayState, resolveFontCss } from '../shared/stylesAndStreak.ts';
-import type { RankIcon, RankRole } from '../shared/types.ts';
+import type { ActivityStatus, RankIcon, RankRole } from '../shared/types.ts';
+
+export function Logo({
+  siteName = 'شات الخليج',
+  className = '',
+}: {
+  siteName?: string;
+  className?: string;
+}) {
+  const normalized = siteName.trim();
+  if (!normalized || normalized === 'شات الخليج') {
+    return (
+      <span className={`font-display font-bold tracking-tight ${className}`}>
+        <span className="text-gradient-gold">شات</span>{' '}
+        <span className="text-foreground">الخليج</span>
+      </span>
+    );
+  }
+  const parts = normalized.split(/\s+/);
+  if (parts.length >= 2) {
+    return (
+      <span className={`font-display font-bold tracking-tight ${className}`}>
+        <span className="text-gradient-gold">{parts[0]}</span>{' '}
+        <span className="text-foreground">{parts.slice(1).join(' ')}</span>
+      </span>
+    );
+  }
+  return (
+    <span className={`font-display font-bold tracking-tight text-gradient-gold ${className}`}>
+      {normalized}
+    </span>
+  );
+}
 
 export function RankIconGlyph({
   icon,
@@ -137,16 +171,17 @@ export function UserAvatar({
   className = '',
 }: {
   user: { username: string; color: string; avatarUrl: string | null };
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
   fit?: 'cover' | 'cover-top' | 'contain';
   className?: string;
 }) {
   const dims = {
     xs: 'size-7 text-xs',
-    sm: 'size-9 text-sm',
-    md: 'size-10 text-sm',
-    lg: 'size-14 text-lg',
+    sm: 'size-8 text-sm',
+    md: 'size-10 text-base',
+    lg: 'size-14 text-xl',
     xl: 'size-16 text-xl',
+    '2xl': 'size-24 text-4xl',
     full: 'size-full',
   }[size];
 
@@ -162,21 +197,83 @@ export function UserAvatar({
       <img
         src={user.avatarUrl}
         alt={user.username}
-        className={`${dims} shrink-0 rounded-full ${fitClass} border border-border ${className}`}
+        className={`${dims} shrink-0 rounded-full bg-surface-raised ${fitClass} ${className}`}
       />
     );
   }
 
   return (
     <span
-      className={`${dims} inline-flex shrink-0 items-center justify-center rounded-full font-bold border border-white/15 select-none ${className}`}
+      className={`${dims} inline-flex shrink-0 items-center justify-center rounded-full font-sans font-bold text-primary-foreground select-none ${className}`}
       style={{
-        backgroundColor: `${user.color || '#eab308'}24`,
-        color: user.color || '#eab308',
+        backgroundColor: user.color || 'var(--primary)',
       }}
+      aria-hidden="true"
     >
-      {user.username.slice(0, 1)}
+      {Array.from(user.username.trim())[0] ?? '؟'}
     </span>
+  );
+}
+
+/**
+ * Displays live activity status ('online' | 'idle' | 'busy') next to another member's avatar.
+ * Never shown for the current user's own account (`targetUserId === currentUserId`) or offline members.
+ */
+export function ActivityStatusBadge({
+  status,
+  targetUserId,
+  currentUserId,
+  online = true,
+  className = '',
+}: {
+  status?: ActivityStatus;
+  targetUserId?: string;
+  currentUserId?: string | null;
+  online?: boolean;
+  className?: string;
+}) {
+  if (!online || !targetUserId || (currentUserId && targetUserId === currentUserId)) {
+    return null;
+  }
+
+  const resolved: ActivityStatus = status ?? 'online';
+
+  if (resolved === 'busy') {
+    return (
+      <span
+        data-activity-status="busy"
+        data-activity-for={targetUserId}
+        title="مشغول"
+        aria-label="مشغول"
+        className={`pointer-events-none absolute -bottom-0.5 -end-0.5 flex size-3.5 items-center justify-center rounded-full bg-rose-500 text-white ring-2 ring-surface ${className}`}
+      >
+        <Minus className="size-2.5 stroke-[3]" />
+      </span>
+    );
+  }
+
+  if (resolved === 'idle') {
+    return (
+      <span
+        data-activity-status="idle"
+        data-activity-for={targetUserId}
+        title="خامل"
+        aria-label="خامل"
+        className={`pointer-events-none absolute -bottom-0.5 -end-0.5 flex size-3.5 items-center justify-center rounded-full bg-amber-500 text-slate-950 ring-2 ring-surface ${className}`}
+      >
+        <Moon className="size-2 fill-current" />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      data-activity-status="online"
+      data-activity-for={targetUserId}
+      title="متصل الآن"
+      aria-label="متصل الآن"
+      className={`pointer-events-none absolute -bottom-0.5 -end-0.5 flex size-3.5 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-surface ${className}`}
+    />
   );
 }
 
@@ -214,14 +311,14 @@ export function UserDisplayName({
   } as CSSProperties;
 
   return (
-    <span className={`inline-flex items-center gap-1.5 min-w-0 ${className}`}>
+    <span className={`inline-flex items-center gap-1 min-w-0 max-w-full ${className}`}>
       {!plain && rank && (rank.isOwner || rank.level > 0) && (
         <span
           title={rank.name}
-          className="inline-flex shrink-0 items-center"
+          className="inline-flex shrink-0 items-center align-middle"
           style={{ color: rank.color }}
         >
-          <RankIconGlyph icon={rank.icon} className="size-3.5" />
+          <RankIconGlyph icon={rank.icon} className="size-[1.05em]" />
         </span>
       )}
       <span
@@ -240,7 +337,7 @@ export function UserDisplayName({
       )}
       {!plain && showRankLabel && rank && (
         <span
-          className="shrink-0 text-[11px] font-medium px-1.5 py-0.5 rounded bg-surface-raised border border-border"
+          className="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-surface-raised"
           style={{ color: rank.color }}
         >
           {rank.name}
@@ -270,28 +367,30 @@ export function ConfirmActionModal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 animate-in fade-in"
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-2xl">
-        <h3 className="font-display text-xl text-foreground">{title}</h3>
+      <div className="w-full max-w-md rounded-lg border border-border bg-gradient-panel p-6 shadow-panel">
+        <h3 className="font-display text-lg font-semibold leading-none tracking-tight text-foreground">
+          {title}
+        </h3>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{message}</p>
         <div className="mt-5 flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition whitespace-nowrap"
+            className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-surface-raised/70 px-4 text-sm font-medium text-foreground backdrop-blur hover:bg-accent transition cursor-pointer whitespace-nowrap"
           >
             إلغاء
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className={`rounded-lg px-4 py-2 text-sm font-semibold transition whitespace-nowrap ${
+            className={`inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-semibold transition cursor-pointer whitespace-nowrap ${
               danger
-                ? 'bg-destructive text-destructive-foreground hover:opacity-90'
-                : 'bg-primary text-primary-foreground hover:opacity-90'
+                ? 'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90'
+                : 'bg-gradient-gold text-primary-foreground shadow-gold hover:brightness-110'
             }`}
           >
             {confirmLabel}

@@ -123,19 +123,19 @@ export function BansTab({
           value={manualValue}
           onChange={(e) => setManualValue(e.target.value)}
           placeholder="حظر جهاز / آي بي / دولة / حساب"
-          className="h-9 min-w-[220px] flex-1 rounded-lg border border-border bg-background px-3 text-xs"
+          className="h-9 min-w-[220px] flex-1 rounded-md border border-input bg-transparent px-3 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <input
           type="text"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder="السبب (اختياري)"
-          className="h-9 w-48 rounded-lg border border-border bg-background px-3 text-xs"
+          className="h-9 w-48 rounded-md border border-input bg-transparent px-3 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <button
           type="button"
           onClick={() => void handleManualBan()}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-destructive px-4 text-xs font-semibold text-destructive-foreground"
+          className="inline-flex h-9 items-center gap-1.5 rounded-md bg-destructive px-4 text-xs font-semibold text-destructive-foreground shadow-sm hover:bg-destructive/90 cursor-pointer"
         >
           <Ban className="size-3.5" /> حظر
         </button>
@@ -194,7 +194,7 @@ export function BansTab({
           <button
             type="button"
             onClick={() => void handleSaveSecurity()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-gradient-gold px-3.5 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer"
           >
             <Save className="size-3.5" /> حفظ
           </button>
@@ -234,7 +234,7 @@ export function BansTab({
           <button
             type="button"
             onClick={() => void handleSaveSecurity()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-gradient-gold px-3.5 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer"
           >
             <Save className="size-3.5" /> حفظ
           </button>
@@ -405,12 +405,12 @@ export function PowersTab({
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="اسم رتبة جديدة..."
-            className="h-9 rounded-lg border border-border bg-surface px-3 text-xs"
+            className="h-9 rounded-md border border-input bg-surface px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
           <button
             type="button"
             onClick={() => void handleCreateRank()}
-            className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground"
+            className="inline-flex h-9 items-center gap-1 rounded-md bg-gradient-gold px-3 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer"
           >
             <Plus className="size-3.5" /> إضافة
           </button>
@@ -480,7 +480,7 @@ export function PowersTab({
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-xs"
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 />
               </div>
               <div className="space-y-1">
@@ -492,7 +492,7 @@ export function PowersTab({
                   disabled={selected.isOwner}
                   value={level}
                   onChange={(e) => setLevel(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-xs tabular-nums disabled:opacity-60"
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-xs shadow-sm tabular-nums disabled:opacity-60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 />
               </div>
               <div className="space-y-1">
@@ -501,7 +501,7 @@ export function PowersTab({
                   type="color"
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-1 cursor-pointer"
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-1 cursor-pointer"
                 />
               </div>
             </div>
@@ -556,7 +556,7 @@ export function PowersTab({
             <div className="flex justify-end">
               <button
                 type="submit"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-gold px-5 py-2 text-xs font-bold text-primary-foreground"
+                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-gradient-gold px-5 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer"
               >
                 <Save className="size-3.5" /> حفظ الصلاحية
               </button>
@@ -587,7 +587,7 @@ export function RoomsTab({
         <button
           type="button"
           onClick={() => setCreatingNew(true)}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-gold px-4 py-2 text-xs font-bold text-primary-foreground"
+          className="inline-flex h-9 items-center gap-1.5 rounded-md bg-gradient-gold px-4 text-xs font-semibold text-primary-foreground shadow-gold hover:brightness-110 cursor-pointer"
         >
           <Plus className="size-4" /> إنشاء غرفة جديدة
         </button>
